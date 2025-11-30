@@ -9,18 +9,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cloudwego/eino/compose"
+
 	"llm-cache/configs"
 	"llm-cache/internal/app/handlers"
 	"llm-cache/internal/app/server"
-	"llm-cache/internal/domain/repositories"
-	"llm-cache/internal/domain/services"
-	"llm-cache/internal/infrastructure/cache"
-	"llm-cache/internal/infrastructure/embedding/remote"
-	"llm-cache/internal/infrastructure/postprocessing"
-	"llm-cache/internal/infrastructure/preprocessing"
-	"llm-cache/internal/infrastructure/quality"
-	"llm-cache/internal/infrastructure/stores/qdrant"
-	"llm-cache/internal/infrastructure/vector"
+	"llm-cache/internal/eino/components"
+	einoconfig "llm-cache/internal/eino/config"
+	"llm-cache/internal/eino/flows"
 	"llm-cache/pkg/logger"
 )
 
@@ -33,7 +29,7 @@ func main() {
 	// 创建早期logger（使用默认配置）
 	earlyLogger := logger.Default()
 
-	// 第一阶段：配置初始化
+	// 初始化应用程序
 	if err := initializeApplication(ctx, earlyLogger); err != nil {
 		earlyLogger.ErrorContext(ctx, "应用程序初始化失败", "error", err)
 		os.Exit(1)
@@ -51,8 +47,8 @@ func initializeApplication(ctx context.Context, earlyLogger logger.Logger) error
 
 	earlyLogger.InfoContext(ctx, "配置加载成功",
 		"server_port", config.Server.Port,
-		"database_type", config.Database.Type,
-		"embedding_type", config.Embedding.Type)
+		"eino_embedder_provider", config.Eino.Embedder.Provider,
+		"eino_retriever_provider", config.Eino.Retriever.Provider)
 
 	// 2. 初始化日志服务
 	appLogger, err := initializeLogger(config.Logging)
@@ -62,25 +58,18 @@ func initializeApplication(ctx context.Context, earlyLogger logger.Logger) error
 
 	appLogger.InfoContext(ctx, "日志服务初始化完成")
 
-	// 3. 初始化外部依赖
-	vectorRepo, embeddingService, err := initializeInfrastructure(ctx, config, appLogger)
+	// 3. 初始化 Eino 组件
+	queryRunner, storeRunner, deleteService, err := initializeEinoComponents(ctx, &config.Eino, appLogger)
 	if err != nil {
-		return fmt.Errorf("外部依赖初始化失败: %w", err)
+		return fmt.Errorf("Eino 组件初始化失败: %w", err)
 	}
-	appLogger.InfoContext(ctx, "外部依赖初始化完成")
+	appLogger.InfoContext(ctx, "Eino 组件初始化完成")
 
-	// 4. 初始化业务服务
-	cacheService, err := initializeServices(ctx, config, vectorRepo, embeddingService, appLogger)
-	if err != nil {
-		return fmt.Errorf("业务服务初始化失败: %w", err)
-	}
-	appLogger.InfoContext(ctx, "业务服务初始化完成")
-
-	// 5. 初始化应用层
-	cacheHandler := handlers.NewCacheHandler(cacheService, appLogger)
+	// 4. 初始化应用层
+	cacheHandler := handlers.NewCacheHandler(queryRunner, storeRunner, deleteService, appLogger)
 	httpServer := server.NewServer(&config.Server, cacheHandler, appLogger)
 
-	// 6. 启动服务并等待停止信号
+	// 5. 启动服务并等待停止信号
 	return runApplication(ctx, httpServer, appLogger)
 }
 
@@ -114,133 +103,80 @@ func initializeLogger(config configs.LoggingConfig) (logger.Logger, error) {
 	return logger.New(loggerConfig), nil
 }
 
-// initializeInfrastructure 初始化基础设施层
-func initializeInfrastructure(ctx context.Context, config *configs.Config, log logger.Logger) (repositories.VectorRepository, services.EmbeddingService, error) {
-	// 初始化向量存储
-	var vectorRepo repositories.VectorRepository
-	var err error
-
-	switch config.Database.Type {
-	case "qdrant":
-		factory := qdrant.NewQdrantVectorStoreFactory(log.SlogLogger())
-		vectorRepo, err = factory.CreateVectorRepository(ctx, &config.Database.Qdrant)
-		if err != nil {
-			return nil, nil, fmt.Errorf("Qdrant向量存储初始化失败: %w", err)
-		}
-	default:
-		return nil, nil, fmt.Errorf("不支持的数据库类型: %s", config.Database.Type)
-	}
-
-	// 初始化嵌入服务
-	var embeddingService services.EmbeddingService
-
-	switch config.Embedding.Type {
-	case "remote":
-		embeddingService, err = remote.NewRemoteEmbeddingService(&config.Embedding.Remote, log)
-		if err != nil {
-			return nil, nil, fmt.Errorf("远程嵌入服务初始化失败: %w", err)
-		}
-	default:
-		return nil, nil, fmt.Errorf("不支持的嵌入服务类型: %s", config.Embedding.Type)
-	}
-
-	return vectorRepo, embeddingService, nil
-}
-
-// initializeServices 初始化业务服务
-func initializeServices(
+// initializeEinoComponents 初始化 Eino 组件
+func initializeEinoComponents(
 	ctx context.Context,
-	config *configs.Config,
-	vectorRepo repositories.VectorRepository,
-	embeddingService services.EmbeddingService,
+	einoCfg *einoconfig.EinoConfig,
 	log logger.Logger,
-) (services.CacheService, error) {
+) (
+	compose.Runnable[*flows.CacheQueryInput, *flows.CacheQueryOutput],
+	compose.Runnable[*flows.CacheStoreInput, *flows.CacheStoreOutput],
+	*flows.CacheDeleteService,
+	error,
+) {
+	// 1. 创建 Embedder
+	log.InfoContext(ctx, "正在初始化 Embedder",
+		"provider", einoCfg.Embedder.Provider,
+		"model", einoCfg.Embedder.Model)
 
-	// 初始化VectorService
-	vectorServiceFactory := vector.NewVectorServiceFactory(log)
-	vectorService, err := vectorServiceFactory.CreateVectorService(
-		embeddingService,
-		vectorRepo,
-		vector.DefaultVectorServiceConfig(),
-	)
+	embedder, err := components.NewEmbedder(ctx, &einoCfg.Embedder)
 	if err != nil {
-		log.ErrorContext(ctx, "向量服务初始化失败", "error", err)
-		return nil, fmt.Errorf("向量服务初始化失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("Embedder 初始化失败: %w", err)
 	}
-	log.InfoContext(ctx, "向量服务初始化成功")
+	log.InfoContext(ctx, "Embedder 初始化成功")
 
-	var preprocessingService services.RequestPreprocessingService
-	var postprocessingService services.RecallPostprocessingService
-	var qualityService services.QualityService
+	// 2. 创建 Retriever
+	log.InfoContext(ctx, "正在初始化 Retriever",
+		"provider", einoCfg.Retriever.Provider,
+		"collection", einoCfg.Retriever.Collection)
 
-	// 初始化请求预处理服务
-	if preprocessingFactory := preprocessing.NewFactory(log); preprocessingFactory != nil {
-		preprocessingService = preprocessingFactory.CreateRequestPreprocessingService(nil)
-		log.InfoContext(ctx, "请求预处理服务初始化成功")
-	} else {
-		log.WarnContext(ctx, "请求预处理服务初始化失败，将禁用预处理功能")
-	}
-
-	// 初始化召回后处理服务
-	if postprocessingFactory := postprocessing.NewFactory(log); postprocessingFactory != nil {
-		postprocessingService = postprocessingFactory.CreateRecallPostprocessingService(nil)
-		log.InfoContext(ctx, "召回后处理服务初始化成功")
-	} else {
-		log.WarnContext(ctx, "召回后处理服务初始化失败，将禁用后处理功能")
-	}
-
-	// 初始化质量评估服务
-	if qualityFactory := quality.NewQualityServiceFactory(log); qualityFactory != nil {
-		// 使用默认质量评估配置
-		qualityConfig := createDefaultQualityConfig()
-		qualityService, err = qualityFactory.CreateQualityService(qualityConfig)
-		if err != nil {
-			log.WarnContext(ctx, "质量评估服务初始化失败", "error", err)
-			qualityService = nil
-		}
-	}
-
-	// 创建CacheService 核心缓存服务
-	cacheFactory := cache.NewCacheServiceFactory(log)
-
-	cacheService, err := cacheFactory.CreateCacheService(
-		vectorService,
-		embeddingService,
-		vectorRepo,
-		preprocessingService,
-		postprocessingService,
-		qualityService,
-		cache.DefaultConfig(),
-	)
+	retriever, err := components.NewRetriever(ctx, &einoCfg.Retriever, embedder)
 	if err != nil {
-		return nil, fmt.Errorf("核心缓存服务创建失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("Retriever 初始化失败: %w", err)
 	}
+	log.InfoContext(ctx, "Retriever 初始化成功")
 
-	log.InfoContext(ctx, "基础缓存服务创建成功")
-	return cacheService, nil
-}
+	// 3. 创建 Indexer
+	log.InfoContext(ctx, "正在初始化 Indexer",
+		"provider", einoCfg.Indexer.Provider,
+		"collection", einoCfg.Indexer.Collection)
 
-// createDefaultQualityConfig 创建默认质量评估配置
-func createDefaultQualityConfig() *services.QualityConfig {
-	return &services.QualityConfig{
-		Strategies:           []string{"format", "relevance"},
-		StrategyWeights:      map[string]float64{"format": 0.3, "relevance": 0.7},
-		UserTypeThresholds:   map[string]float64{"default": 0.7},
-		DefaultThreshold:     0.7,
-		MinQuestionLength:    5,
-		MaxQuestionLength:    1000,
-		MinAnswerLength:      10,
-		MaxAnswerLength:      10000,
-		BlacklistKeywords:    []string{},
-		BlacklistPatterns:    []string{},
-		EnableBlacklistCheck: true,
-		Timeout:              30,
+	indexer, err := components.NewIndexer(ctx, &einoCfg.Indexer, embedder)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Indexer 初始化失败: %w", err)
 	}
+	log.InfoContext(ctx, "Indexer 初始化成功")
+
+	// 4. 创建 Query Graph 并编译
+	queryGraph := flows.NewCacheQueryGraph(embedder, retriever, &einoCfg.Query)
+	queryRunner, err := queryGraph.Compile(ctx)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Query Graph 编译失败: %w", err)
+	}
+	log.InfoContext(ctx, "Query Graph 编译成功")
+
+	// 5. 创建 Store Graph 并编译
+	storeGraph := flows.NewCacheStoreGraph(embedder, indexer, &einoCfg.Store, &einoCfg.Quality)
+	storeRunner, err := storeGraph.Compile(ctx)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Store Graph 编译失败: %w", err)
+	}
+	log.InfoContext(ctx, "Store Graph 编译成功")
+
+	// 6. 创建 Delete Service
+	deleteService, err := flows.NewCacheDeleteService(&einoCfg.Retriever)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("Delete Service 初始化失败: %w", err)
+	}
+	log.InfoContext(ctx, "Delete Service 创建成功")
+
+	return queryRunner, storeRunner, deleteService, nil
 }
 
 // runApplication 运行应用程序，监听停止信号
+// 此函数会阻塞直到收到停止信号、服务器错误或上下文取消
 func runApplication(ctx context.Context, httpServer *server.Server, log logger.Logger) error {
-	// 创建错误通道
+	// 创建错误通道 - 用于接收服务器运行时错误
 	errChan := make(chan error, 1)
 
 	// 创建信号通道
@@ -248,13 +184,10 @@ func runApplication(ctx context.Context, httpServer *server.Server, log logger.L
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// 启动HTTP服务器（非阻塞）
-	go func() {
-		if err := httpServer.Start(ctx); err != nil {
-			errChan <- fmt.Errorf("HTTP服务器启动失败: %w", err)
-		}
-	}()
+	// 服务器的运行时错误会通过 errChan 传递
+	httpServer.Start(ctx, errChan)
 
-	// 等待停止信号或错误
+	// 等待停止信号、服务器错误或上下文取消
 	select {
 	case err := <-errChan:
 		log.ErrorContext(ctx, "服务器运行错误", "error", err)
@@ -262,8 +195,6 @@ func runApplication(ctx context.Context, httpServer *server.Server, log logger.L
 
 	case sig := <-signalChan:
 		log.InfoContext(ctx, "收到停止信号，开始优雅关闭", "signal", sig.String())
-
-		// 执行优雅关闭
 		return gracefulShutdown(ctx, httpServer, log)
 
 	case <-ctx.Done():

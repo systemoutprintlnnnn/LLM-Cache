@@ -3,16 +3,19 @@ package configs
 import (
 	"fmt"
 	"time"
+
+	einoconfig "llm-cache/internal/eino/config"
 )
 
 // Config 主配置结构体
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Database  DatabaseConfig  `yaml:"database"`
-	Embedding EmbeddingConfig `yaml:"embedding"`
-	Logging   LoggingConfig   `yaml:"logging"`
-	Cache     CacheConfig     `yaml:"cache"`
-	Quality   QualityConfig   `yaml:"quality"`
+	Server    ServerConfig          `yaml:"server"`
+	Database  DatabaseConfig        `yaml:"database"`
+	Embedding EmbeddingConfig       `yaml:"embedding"`
+	Logging   LoggingConfig         `yaml:"logging"`
+	Cache     CacheConfig           `yaml:"cache"`
+	Quality   QualityConfig         `yaml:"quality"`
+	Eino      einoconfig.EinoConfig `yaml:"eino"` // Eino 框架配置
 }
 
 // ServerConfig 服务器配置

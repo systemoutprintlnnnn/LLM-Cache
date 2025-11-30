@@ -1,751 +1,721 @@
-# 技术架构文档
+# LLM-Cache 架构文档
 
-> **项目名称**：LLM-Cache - 基于语义的大模型缓存系统  
-> **文档版本**：1.0  
-> **最后更新**：2025-01-01
+## 项目概览
 
----
+LLM-Cache 是一个基于 **CloudWeGo Eino 框架** 和 Go 语言开发的智能语义缓存系统。通过 Eino 的流程编排能力，实现了灵活、可扩展的缓存查询和存储流程。
 
-## 1. 系统概述
+### 设计原则
 
-### 1.1 系统定位
-LLM-Cache 是一个基于 Go 语言开发的企业级 LLM 语义缓存中间件系统，通过语义相似度匹配优化大模型调用效率，实现成本降低90%、响应速度提升100倍的显著业务价值。
+1. **直接使用 Eino 类型** - 业务代码直接依赖 `embedding.Embedder`、`retriever.Retriever`、`compose.Runnable` 等 Eino 原生类型
+2. **Graph 流程编排** - 使用 Eino Graph 实现业务流程，支持条件分支和并行执行
+3. **组件化设计** - 通过工厂模式创建可替换的组件（Embedder、Retriever、Indexer）
+4. **可观测性优先** - 内置 Callback 机制，支持日志、指标、追踪
 
-### 1.2 核心功能
-- **语义缓存查询**：基于向量相似度的智能缓存匹配
-- **缓存写入存储**：支持质量评估的问答对存储
-- **向量化服务**：文本到向量的高效转换
-- **质量评估**：多策略的缓存内容质量控制
-- **预处理/后处理**：请求预处理和召回结果后处理
+## 技术栈
 
-### 1.3 技术栈概览
+| 类别 | 技术选型 | 说明 |
+|------|----------|------|
+| 编程语言 | Go 1.23+ | 高性能并发支持 |
+| 核心框架 | CloudWeGo Eino v0.7.3 | LLM 应用开发框架 |
+| Web 框架 | Gin 1.10.1 | HTTP 路由和中间件 |
+| 向量数据库 | Qdrant / Milvus / Redis / ES8 | 向量存储和检索 |
+| Embedding | OpenAI / ARK / Ollama / Dashscope | 文本向量化服务 |
+| 配置管理 | YAML + 环境变量 | 灵活的配置方式 |
+| 日志系统 | log/slog | Go 标准库结构化日志 |
 
-| 分类 | 技术选型 | 版本 |
-|------|---------|------|
-| 编程语言 | Go | 1.22.2+ |
-| Web框架 | Gin | 1.10.1 |
-| 向量数据库 | Qdrant | 1.15.2 (go-client) |
-| 向量化模型 | OpenAI API | 1.12.0 (go-client) |
-| 配置管理 | YAML | 3.0.1 |
-| 日志系统 | log/slog | Go标准库 |
-| 依赖管理 | Go Modules | - |
-
----
-
-## 2. 架构设计
-
-### 2.1 整体架构
-
-```mermaid
-graph TB
-    subgraph "外部层"
-        Client[客户端应用]
-    end
-    
-    subgraph "应用层 app/"
-        Handler[HTTP Handlers]
-        Middleware[中间件层]
-        Server[HTTP Server]
-    end
-    
-    subgraph "领域层 domain/"
-        Models[领域模型]
-        ServiceInterface[服务接口]
-        RepoInterface[仓储接口]
-    end
-    
-    subgraph "基础设施层 infrastructure/"
-        CacheImpl[缓存服务实现]
-        VectorService[向量服务]
-        EmbeddingService[嵌入服务]
-        QualityService[质量评估]
-        PreProcess[预处理服务]
-        PostProcess[后处理服务]
-        QdrantStore[Qdrant存储]
-    end
-    
-    subgraph "工具层 pkg/"
-        Logger[日志工具]
-        Status[状态码]
-    end
-    
-    subgraph "外部依赖"
-        Qdrant[(Qdrant DB)]
-        OpenAI[OpenAI API]
-    end
-    
-    Client -->|HTTP| Handler
-    Handler --> Middleware
-    Middleware --> Server
-    Handler --> ServiceInterface
-    
-    ServiceInterface -.实现.-> CacheImpl
-    RepoInterface -.实现.-> QdrantStore
-    
-    CacheImpl --> VectorService
-    CacheImpl --> EmbeddingService
-    CacheImpl --> QualityService
-    CacheImpl --> PreProcess
-    CacheImpl --> PostProcess
-    
-    VectorService --> EmbeddingService
-    VectorService --> QdrantStore
-    
-    EmbeddingService --> OpenAI
-    QdrantStore --> Qdrant
-    
-    Handler --> Logger
-    CacheImpl --> Logger
-```
-
-### 2.2 架构模式
-本项目采用 **DDD（领域驱动设计）+ Clean Architecture**，具体分为以下层次：
-
-#### 2.2.1 应用层（Application Layer）
-- **职责**：处理HTTP请求、参数验证、响应序列化、路由管理
-- **目录**：`internal/app/`
-- **核心组件**：
-  - `handlers/` - HTTP请求处理器
-  - `middleware/` - 日志、恢复等中间件
-  - `server/` - HTTP服务器和路由配置
-
-#### 2.2.2 领域层（Domain Layer）
-- **职责**：定义核心业务实体、服务接口、仓储接口
-- **目录**：`internal/domain/`
-- **核心组件**：
-  - `models/` - 核心领域模型（CacheItem, Vector, Request等）
-  - `services/` - 业务服务接口定义
-  - `repositories/` - 数据访问接口定义
-
-#### 2.2.3 基础设施层（Infrastructure Layer）
-- **职责**：具体技术实现、外部服务集成
-- **目录**：`internal/infrastructure/`
-- **核心组件**：
-  - `cache/` - 缓存服务实现
-  - `vector/` - 向量服务实现
-  - `embedding/remote/` - 远程嵌入服务（OpenAI）
-  - `stores/qdrant/` - Qdrant向量存储
-  - `quality/` - 质量评估服务
-  - `preprocessing/` - 请求预处理
-  - `postprocessing/` - 召回后处理
-
-#### 2.2.4 工具层（Package Layer）
-- **职责**：通用工具和辅助功能
-- **目录**：`pkg/`
-- **核心组件**：
-  - `logger/` - 基于slog的日志封装
-  - `status/` - 统一状态码定义
-
----
-
-## 3. 核心模块设计
-
-### 3.1 模块划分
+## 项目结构
 
 ```
-LLM-Cache/
-├── cmd/server/          # 应用入口（依赖注入、生命周期管理）
-├── internal/app/        # 应用层（HTTP处理、路由、中间件）
-├── internal/domain/     # 领域层（模型、接口定义）
-├── internal/infrastructure/  # 基础设施层（具体实现）
-├── configs/             # 配置管理
-├── pkg/                 # 工具包
-└── docs/                # 项目文档
+llm-cache/
+├── cmd/
+│   └── server/
+│       └── main.go                 # 应用入口，Eino 组件初始化
+├── configs/
+│   ├── config.go                   # 配置结构体定义
+│   └── loader.go                   # 配置加载器
+├── internal/
+│   ├── app/
+│   │   ├── handlers/
+│   │   │   └── cache_handler.go    # HTTP Handler，依赖 compose.Runnable
+│   │   ├── middleware/
+│   │   │   └── logging.go          # HTTP 日志中间件
+│   │   └── server/
+│   │       ├── routes.go           # 路由配置
+│   │       └── server.go           # HTTP 服务器
+│   ├── domain/
+│   │   └── models/
+│   │       ├── cache.go            # 缓存领域模型
+│   │       ├── request.go          # 请求模型
+│   │       └── vector.go           # 向量模型
+│   └── eino/                       # Eino 框架集成
+│       ├── callbacks/              # Callback 处理器
+│       │   ├── factory.go          # Callback 工厂
+│       │   ├── logging.go          # 日志回调
+│       │   ├── metrics.go          # 指标回调
+│       │   └── tracing.go          # 追踪回调
+│       ├── components/             # Eino 组件工厂
+│       │   ├── embedder.go         # Embedder 工厂
+│       │   ├── retriever.go        # Retriever 工厂
+│       │   └── indexer.go          # Indexer 工厂
+│       ├── config/
+│       │   └── config.go           # Eino 配置结构
+│       ├── flows/                  # 业务 Graph 流程
+│       │   ├── cache_query.go      # 缓存查询 Graph
+│       │   ├── cache_store.go      # 缓存存储 Graph
+│       │   └── cache_delete.go     # 缓存删除服务
+│       └── nodes/                  # Lambda 节点
+│           ├── preprocessing.go    # 查询预处理
+│           ├── postprocessing.go   # 结果后处理
+│           ├── quality_check.go    # 质量检查
+│           └── result_select.go    # 结果选择
+├── pkg/
+│   ├── logger/
+│   │   └── logger.go               # 日志工具
+│   └── status/
+│       └── codes.go                # 状态码定义
+├── docs/
+│   └── project/
+│       ├── ARCHITECTURE.md         # 架构文档（本文件）
+│       └── EINO_INTEGRATION_PLAN.md # Eino 集成方案
+├── go.mod
+└── go.sum
 ```
 
-### 3.2 模块职责说明
+## 架构设计
 
-#### 缓存服务模块 (CacheService)
-- **功能**：协调各组件完成缓存的查询、存储、删除
-- **核心类**：
-  - `CacheService` 接口 - 定义缓存服务契约
-  - 具体实现 (infrastructure/cache/) - 组合各个服务
-- **对外接口**：
-  - `POST /v1/cache/search`：语义缓存查询
-  - `POST /v1/cache/store`：问答对存储
-  - `GET /v1/cache/:cache_id`：获取缓存项
-  - `DELETE /v1/cache/:cache_id`：删除缓存
-  - `DELETE /v1/cache/batch`：批量删除
-  - `GET /v1/cache/statistics`：获取统计信息
-  - `GET /v1/cache/health`：健康检查
+### 整体架构
 
-#### 向量服务模块 (VectorService)
-- **功能**：文本向量化和向量相似度搜索
-- **核心类**：
-  - `VectorService` 接口 - 向量服务契约
-  - 实现类 (infrastructure/vector/) - 组合嵌入和存储
-- **核心能力**：
-  - 文本转向量
-  - 向量相似度搜索
-  - 批量向量处理
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         客户端应用层                                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│                    API 接口层 (Gin HTTP)                             │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  CacheHandler                                                  │  │
+│  │  - queryRunner: compose.Runnable[*QueryInput, *QueryOutput]   │  │
+│  │  - storeRunner: compose.Runnable[*StoreInput, *StoreOutput]   │  │
+│  │  - deleteService: *CacheDeleteService                         │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│                   Eino Graph 流程编排层                              │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │ CacheQueryGraph                                              │    │
+│  │ START → Preprocess → Retrieve → Select → Postprocess → END  │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │ CacheStoreGraph                                              │    │
+│  │ START → QualityCheck → Branch → Embed → Index → END         │    │
+│  │                         ↓                                    │    │
+│  │                    Reject (if failed)                        │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Eino 组件层                                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                  │
+│  │  Embedder   │  │  Retriever  │  │   Indexer   │                  │
+│  │  (OpenAI)   │  │  (Qdrant)   │  │  (Qdrant)   │                  │
+│  └─────────────┘  └─────────────┘  └─────────────┘                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                  ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│                     数据存储层                                       │
+│         Qdrant  |  Milvus  |  Redis  |  Elasticsearch               │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
-#### 嵌入服务模块 (EmbeddingService)
-- **功能**：调用OpenAI API生成文本向量
-- **核心类**：
-  - `EmbeddingService` 接口 - 嵌入服务契约
-  - `RemoteEmbeddingService` - 远程API实现
-- **特性**：
-  - 支持单个/批量文本向量化
-  - 可配置模型和端点
-  - 自动重试机制
+### 层次说明
 
-#### 向量存储模块 (VectorRepository)
-- **功能**：向量数据的持久化和检索
-- **核心类**：
-  - `VectorRepository` 接口 - 仓储契约
-  - `QdrantVectorStore` - Qdrant实现
-- **核心操作**：
-  - 单个/批量向量存储
-  - 向量相似度搜索
-  - 向量删除和获取
+| 层次 | 职责 | 主要组件 |
+|------|------|----------|
+| API 接口层 | HTTP 请求处理、参数验证、响应格式化 | CacheHandler, Gin Router |
+| Graph 流程层 | 业务流程编排、条件分支、节点执行 | CacheQueryGraph, CacheStoreGraph |
+| 组件层 | 向量化、检索、索引等原子操作 | Embedder, Retriever, Indexer |
+| 数据存储层 | 向量数据持久化和检索 | Qdrant, Milvus, Redis, ES8 |
 
-#### 质量评估模块 (QualityService)
-- **功能**：评估缓存内容质量，过滤低质量问答
-- **核心策略**：
-  - 格式检查策略
-  - 相关性评估策略
-  - 黑名单过滤
-- **配置化**：支持多策略组合和权重配置
+## 核心模块详解
 
-#### 预处理/后处理模块
-- **预处理**：请求标准化、文本清洗
-- **后处理**：结果格式化、相似度调整
+### 1. Eino 组件工厂 (internal/eino/components/)
 
----
+组件工厂负责根据配置创建 Eino 原生组件实例。
 
-## 4. 数据设计
-
-### 4.1 核心领域模型
-
-#### 4.1.1 缓存模型 (CacheItem)
+#### Embedder 工厂
 
 ```go
-type CacheItem struct {
-    ID           string          // 唯一标识符
-    Question     string          // 问题文本
-    Answer       string          // 答案文本
-    Vector       []float32       // 问题向量
-    UserType     string          // 用户类型
-    Metadata     *CacheMetadata  // 元数据
-    CreatedAt    time.Time       // 创建时间
-    UpdatedAt    time.Time       // 更新时间
+// internal/eino/components/embedder.go
+
+// NewEmbedder 创建 Eino Embedder 实例
+func NewEmbedder(ctx context.Context, cfg *config.EmbedderConfig) (embedding.Embedder, error) {
+    switch cfg.Provider {
+    case "openai":
+        return openaiembed.NewEmbedder(ctx, &openaiembed.EmbeddingConfig{
+            APIKey:  cfg.APIKey,
+            BaseURL: cfg.BaseURL,
+            Model:   cfg.Model,
+            Timeout: time.Duration(cfg.Timeout) * time.Second,
+        })
+    case "ark":
+        return ark.NewEmbedder(ctx, &ark.EmbeddingConfig{...})
+    case "ollama":
+        return ollama.NewEmbedder(ctx, &ollama.EmbeddingConfig{...})
+    // ... 其他提供商
+    }
 }
 ```
 
-#### 4.1.2 向量模型 (Vector)
+**支持的 Embedding 提供商**:
+- `openai` - OpenAI API
+- `ark` - 火山引擎 ARK
+- `ollama` - 本地 Ollama
+- `dashscope` - 阿里云 Dashscope
+- `qianfan` - 百度千帆
+- `tencentcloud` - 腾讯云
+
+#### Retriever 工厂
 
 ```go
-type Vector struct {
-    ID         string     // 向量ID
-    Values     []float32  // 向量值
-    Dimension  int        // 向量维度
-    CreatedAt  time.Time  // 创建时间
+// internal/eino/components/retriever.go
+
+// NewRetriever 创建 Eino Retriever 实例
+func NewRetriever(ctx context.Context, cfg *config.RetrieverConfig, embedder embedding.Embedder) (retriever.Retriever, error) {
+    switch cfg.Provider {
+    case "qdrant":
+        client, _ := qdrantClient.NewClient(&qdrantClient.Config{
+            Host: cfg.Qdrant.Host,
+            Port: cfg.Qdrant.Port,
+        })
+        return qdrantretriever.NewRetriever(ctx, &qdrantretriever.Config{
+            Client:     client,
+            Collection: cfg.Collection,
+            Embedding:  embedder,
+            TopK:       cfg.TopK,
+        })
+    // ... 其他提供商
+    }
 }
 ```
 
-### 4.2 向量存储设计
+**支持的向量数据库**:
+- `qdrant` - Qdrant
+- `milvus` - Milvus
+- `redis` - Redis Stack
+- `es8` - Elasticsearch 8
 
-**Qdrant Collection 结构**：
+### 2. Lambda 节点 (internal/eino/nodes/)
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | string | 向量点ID（对应CacheItem ID） |
-| vector | float32[] | 1536维向量（OpenAI embedding） |
-| payload.user_type | string | 用户类型 |
-| payload.question | string | 问题文本 |
-| payload.answer | string | 答案文本 |
-| payload.created_at | timestamp | 创建时间 |
+Lambda 节点封装了业务逻辑，作为 Graph 中的处理单元。
 
-**索引策略**：
-- 距离度量：Cosine 余弦相似度
-- HNSW索引：高性能近似最近邻搜索
-- 过滤器：支持user_type等字段过滤
+#### 预处理节点
 
----
+```go
+// internal/eino/nodes/preprocessing.go
 
-## 5. 接口设计
+// PreprocessInput 预处理输入
+type PreprocessInput struct {
+    Query    string
+    UserType string
+}
 
-### 5.1 API规范
+// PreprocessOutput 预处理输出
+type PreprocessOutput struct {
+    Query    string
+    UserType string
+}
 
-- **协议**：HTTP/1.1, RESTful
-- **基础URL**：`http://localhost:8080`
-- **数据格式**：JSON
-- **响应格式**：统一的APIResponse结构
-
-**统一响应格式**：
-```json
-{
-  "success": true,
-  "code": 0,
-  "message": "操作成功",
-  "data": {},
-  "request_id": "uuid",
-  "timestamp": 1234567890
+// PreprocessQuery 查询预处理
+func PreprocessQuery(ctx context.Context, input *PreprocessInput) (*PreprocessOutput, error) {
+    query := input.Query
+    
+    // 1. 去除首尾空白
+    query = strings.TrimSpace(query)
+    
+    // 2. 规范化空白字符
+    query = normalizeWhitespace(query)
+    
+    // 3. 移除控制字符
+    query = removeControlChars(query)
+    
+    return &PreprocessOutput{
+        Query:    query,
+        UserType: input.UserType,
+    }, nil
 }
 ```
 
-### 5.2 核心接口
+#### 质量检查节点
 
-#### 5.2.1 缓存查询
-```
-POST /v1/cache/search
-Content-Type: application/json
+```go
+// internal/eino/nodes/quality_check.go
 
-Request:
-{
-  "question": "什么是机器学习?",
-  "user_type": "free",
-  "similarity_threshold": 0.85,
-  "top_k": 5,
-  "include_statistics": false
+// QualityChecker 质量检查器
+type QualityChecker struct {
+    cfg *config.QualityConfig
 }
 
-Response:
-{
-  "success": true,
-  "code": 0,
-  "data": {
-    "found": true,
-    "cache_id": "xxx",
-    "answer": "机器学习是...",
-    "similarity": 0.92,
-    "response_time": 50.5
-  }
-}
-```
-
-#### 5.2.2 缓存存储
-```
-POST /v1/cache/store
-Content-Type: application/json
-
-Request:
-{
-  "question": "什么是深度学习?",
-  "answer": "深度学习是...",
-  "user_type": "premium",
-  "force_write": false
-}
-
-Response:
-{
-  "success": true,
-  "code": 0,
-  "data": {
-    "cache_id": "xxx",
-    "stored": true,
-    "quality_score": 0.95
-  }
+// Check 执行质量检查
+func (c *QualityChecker) Check(ctx context.Context, input *QualityCheckInput) (*QualityCheckResult, error) {
+    // 1. 检查问题长度
+    if len(input.Question) < c.cfg.MinQuestionLength {
+        return &QualityCheckResult{Passed: false, Reason: "question too short"}, nil
+    }
+    
+    // 2. 检查答案长度
+    if len(input.Answer) < c.cfg.MinAnswerLength {
+        return &QualityCheckResult{Passed: false, Reason: "answer too short"}, nil
+    }
+    
+    // 3. 检查黑名单
+    if containsBlacklistWords(input.Question) || containsBlacklistWords(input.Answer) {
+        return &QualityCheckResult{Passed: false, Reason: "contains blacklisted content"}, nil
+    }
+    
+    // 4. 计算质量分数
+    score := calculateQualityScore(input.Question, input.Answer)
+    if score < c.cfg.ScoreThreshold {
+        return &QualityCheckResult{Passed: false, Reason: "quality score below threshold"}, nil
+    }
+    
+    return &QualityCheckResult{Passed: true}, nil
 }
 ```
 
----
+#### 结果选择节点
 
-## 6. 技术选型理由
+```go
+// internal/eino/nodes/result_select.go
 
-### 6.1 编程语言选择
+// ResultSelector 结果选择器
+type ResultSelector struct {
+    strategy    string  // first, highest_score, temperature_softmax
+    temperature float64
+}
 
-**选型**：Go (Golang) 1.22+
-
-**理由**：
-- **高性能**：编译型语言，接近C的执行效率
-- **并发优势**：原生goroutine和channel支持高并发
-- **部署简单**：单二进制文件，跨平台编译
-- **标准库强大**：内置HTTP服务器、JSON处理等
-- **内存安全**：GC自动管理，无内存泄漏风险
-
-### 6.2 Web框架选择
-
-**选型**：Gin Web Framework
-
-**理由**：
-- **高性能**：基于httprouter，路由性能优秀
-- **中间件丰富**：支持灵活的中间件链
-- **参数绑定**：自动JSON/表单参数解析和验证
-- **错误处理**：统一的错误处理机制
-- **社区活跃**：Go生态中最流行的Web框架
-
-### 6.3 向量数据库选择
-
-**选型**：Qdrant
-
-**理由**：
-- **专为向量优化**：高性能HNSW索引
-- **功能完整**：支持过滤、混合查询
-- **Go客户端成熟**：官方go-client支持完善
-- **易于部署**：Docker一键部署
-- **开源免费**：商业友好的Apache 2.0协议
-
-### 6.4 其他关键技术
-
-| 技术 | 作用 | 选型理由 |
-|------|------|---------|
-| log/slog | 日志 | Go 1.21+标准库，结构化日志，性能优秀 |
-| YAML | 配置 | 人类可读，层次清晰，Go生态支持好 |
-| OpenAI API | 向量化 | 业界领先的embedding模型，精度高 |
-| Context | 请求上下文 | Go标准库，超时控制、值传递 |
-
----
-
-## 7. 核心流程
-
-### 7.1 缓存查询流程
-
-```mermaid
-sequenceDiagram
-    participant Client as 客户端
-    participant Handler as CacheHandler
-    participant Cache as CacheService
-    participant PreProc as 预处理
-    participant Vector as VectorService
-    participant Embed as EmbeddingService
-    participant Qdrant as Qdrant向量DB
-    participant PostProc as 后处理
+// Select 选择最佳结果
+func (s *ResultSelector) Select(ctx context.Context, docs []*schema.Document) (*schema.Document, error) {
+    if len(docs) == 0 {
+        return nil, nil
+    }
     
-    Client->>Handler: POST /v1/cache/search
-    Handler->>Handler: 参数验证
-    Handler->>Cache: QueryCache(query)
-    
-    Cache->>PreProc: 预处理请求
-    PreProc-->>Cache: 清洗后的问题
-    
-    Cache->>Vector: SearchSimilarVectors
-    Vector->>Embed: GenerateEmbedding(text)
-    Embed-->>Vector: vector[1536]
-    
-    Vector->>Qdrant: Search(vector, topK)
-    Qdrant-->>Vector: 相似向量列表
-    Vector-->>Cache: 搜索结果
-    
-    Cache->>PostProc: 后处理结果
-    PostProc-->>Cache: 格式化结果
-    
-    Cache-->>Handler: CacheResult
-    Handler-->>Client: JSON Response
+    switch s.strategy {
+    case "first":
+        return docs[0], nil
+    case "highest_score":
+        return s.selectHighestScore(docs), nil
+    case "temperature_softmax":
+        return s.selectBySoftmax(docs), nil
+    default:
+        return docs[0], nil
+    }
+}
 ```
 
-### 7.2 缓存存储流程
+**支持的选择策略**:
+- `first` - 返回第一个结果
+- `highest_score` - 返回最高分结果
+- `temperature_softmax` - 基于温度的 Softmax 采样
 
-```mermaid
-sequenceDiagram
-    participant Client as 客户端
-    participant Handler as CacheHandler
-    participant Cache as CacheService
-    participant Quality as QualityService
-    participant Vector as VectorService
-    participant Embed as EmbeddingService
-    participant Qdrant as Qdrant向量DB
+### 3. 业务 Graph (internal/eino/flows/)
+
+#### 缓存查询 Graph
+
+```go
+// internal/eino/flows/cache_query.go
+
+// CacheQueryGraph 缓存查询 Graph
+type CacheQueryGraph struct {
+    embedder  embedding.Embedder
+    retriever retriever.Retriever
+    cfg       *config.QueryConfig
+}
+
+// Compile 编译 Graph 为可执行的 Runnable
+func (g *CacheQueryGraph) Compile(ctx context.Context) (compose.Runnable[*CacheQueryInput, *CacheQueryOutput], error) {
+    graph := compose.NewGraph[*CacheQueryInput, *CacheQueryOutput]()
     
-    Client->>Handler: POST /v1/cache/store
-    Handler->>Handler: 参数验证
-    Handler->>Cache: StoreCache(request)
+    // 添加节点
+    graph.AddLambdaNode("preprocess", compose.InvokableLambda(nodes.PreprocessQuery))
+    graph.AddRetrieverNode("retrieve", g.retriever)
+    graph.AddLambdaNode("select", compose.InvokableLambda(nodes.NewResultSelector(g.cfg.SelectionStrategy, g.cfg.Temperature)))
+    graph.AddLambdaNode("postprocess", compose.InvokableLambda(nodes.PostprocessResult))
     
-    Cache->>Quality: 质量评估
-    Quality->>Quality: 格式检查
-    Quality->>Quality: 相关性评估
-    Quality->>Quality: 黑名单过滤
-    Quality-->>Cache: 质量分数
+    // 设置边
+    graph.AddEdge(compose.START, "preprocess")
+    graph.AddEdge("preprocess", "retrieve")
+    graph.AddEdge("retrieve", "select")
+    graph.AddEdge("select", "postprocess")
+    graph.AddEdge("postprocess", compose.END)
     
-    alt 质量不合格
-        Cache-->>Handler: 存储失败
-        Handler-->>Client: 质量不达标
-    else 质量合格
-        Cache->>Embed: GenerateEmbedding(question)
-        Embed-->>Cache: vector[1536]
-        
-        Cache->>Qdrant: UpsertPoint(id, vector, payload)
-        Qdrant-->>Cache: 存储成功
-        
-        Cache-->>Handler: WriteResult
-        Handler-->>Client: 存储成功
-    end
+    return graph.Compile(ctx, compose.WithGraphName("cache_query"))
+}
 ```
 
-### 7.3 应用启动流程
-
-```mermaid
-graph TD
-    A[main.go启动] --> B[加载配置文件]
-    B --> C[初始化日志服务]
-    C --> D[初始化Qdrant客户端]
-    D --> E[初始化EmbeddingService]
-    E --> F[初始化VectorService]
-    F --> G[初始化PreProcessing]
-    G --> H[初始化PostProcessing]
-    H --> I[初始化QualityService]
-    I --> J[初始化CacheService]
-    J --> K[创建HTTP Handler]
-    K --> L[配置路由和中间件]
-    L --> M[启动HTTP Server]
-    M --> N[监听停止信号]
-    N --> O[优雅关闭]
-```
-
----
-
-## 8. 非功能性设计
-
-### 8.1 日志系统
-- **框架**：Go标准库 `log/slog`
-- **日志级别**：Debug < Info < Warn < Error
-- **日志格式**：结构化文本日志（TextHandler）
-- **输出方式**：stdout / stderr / file
-- **关键特性**：
-  - 带Context的日志记录
-  - 请求ID追踪
-  - 性能优化的零分配
-
-### 8.2 配置管理
-- **方案**：YAML配置文件 + 环境变量
-- **配置文件**：`configs/config.yaml`
-- **加载器**：`configs/loader.go`
-- **环境区分**：通过环境变量覆盖配置
-- **配置验证**：启动时自动验证配置有效性
-
-### 8.3 错误处理
-- **业务错误码**：
-  - `0` - 成功
-  - `1001` - 参数错误
-  - `1002` - 内部错误
-  - `1003` - 服务不可用
-  - `1004` - 资源不存在
-- **HTTP状态码**：所有业务请求返回200，错误信息在响应体中
-- **错误传播**：使用`fmt.Errorf`包装错误，保留调用栈
-
-### 8.4 性能优化
-- **并发处理**：Goroutine池处理并发请求
-- **连接复用**：HTTP客户端连接池
-- **批量操作**：向量批量存储和查询
-- **索引优化**：Qdrant HNSW索引快速检索
-
-### 8.5 安全设计
-- **输入验证**：Gin参数绑定和验证
-- **超时控制**：Context超时机制
-- **资源限制**：连接数、请求大小限制
-- **敏感信息**：API Key通过环境变量配置
-
-### 8.6 可观测性
-- **结构化日志**：所有操作记录详细日志
-- **请求追踪**：全链路请求ID追踪
-- **性能指标**：响应时间、向量维度等
-- **健康检查**：`/v1/cache/health` 端点
-
----
-
-## 9. 部署架构
-
-### 9.1 部署方式
-- **容器化**：Docker + Docker Compose
-- **进程管理**：systemd / supervisord
-- **反向代理**：Nginx（可选）
-
-### 9.2 最小部署架构
+**查询流程**:
 
 ```
-┌─────────────────┐
-│   Nginx (可选)   │
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  LLM-Cache      │
-│  (Go Binary)    │
-└────┬──────┬─────┘
-     │      │
-     │      └──────┐
-     │             │
-┌────▼─────┐  ┌───▼────┐
-│ Qdrant   │  │OpenAI  │
-│ Vector DB│  │  API   │
-└──────────┘  └────────┘
+┌───────┐   ┌────────────┐   ┌──────────┐   ┌────────┐   ┌─────────────┐   ┌─────┐
+│ START │ → │ Preprocess │ → │ Retrieve │ → │ Select │ → │ Postprocess │ → │ END │
+└───────┘   └────────────┘   └──────────┘   └────────┘   └─────────────┘   └─────┘
 ```
 
-### 9.3 Docker部署示例
+#### 缓存存储 Graph
+
+```go
+// internal/eino/flows/cache_store.go
+
+// CacheStoreGraph 缓存存储 Graph
+type CacheStoreGraph struct {
+    embedder embedding.Embedder
+    indexer  indexer.Indexer
+    cfg      *config.StoreConfig
+    quality  *config.QualityConfig
+}
+
+// Compile 编译 Graph 为可执行的 Runnable
+func (g *CacheStoreGraph) Compile(ctx context.Context) (compose.Runnable[*CacheStoreInput, *CacheStoreOutput], error) {
+    graph := compose.NewGraph[*CacheStoreInput, *CacheStoreOutput]()
+    
+    // 添加节点
+    checker := nodes.NewQualityChecker(g.quality)
+    graph.AddLambdaNode("quality_check", compose.InvokableLambda(checker.Check))
+    graph.AddLambdaNode("embed", compose.InvokableLambda(g.embedQuestion))
+    graph.AddLambdaNode("index", compose.InvokableLambda(g.indexDocument))
+    graph.AddLambdaNode("reject", compose.InvokableLambda(g.rejectStore))
+    
+    // 设置边和条件分支
+    graph.AddEdge(compose.START, "quality_check")
+    graph.AddBranch("quality_check", compose.NewGraphBranch(
+        func(ctx context.Context, result *nodes.QualityCheckResult) (string, error) {
+            if result.Passed {
+                return "embed", nil
+            }
+            return "reject", nil
+        },
+        map[string]bool{"embed": true, "reject": true},
+    ))
+    graph.AddEdge("embed", "index")
+    graph.AddEdge("index", compose.END)
+    graph.AddEdge("reject", compose.END)
+    
+    return graph.Compile(ctx, compose.WithGraphName("cache_store"))
+}
+```
+
+**存储流程**:
+
+```
+┌───────┐   ┌───────────────┐   ┌─────────┐   ┌───────┐   ┌─────┐
+│ START │ → │ QualityCheck  │ → │  Embed  │ → │ Index │ → │ END │
+└───────┘   └───────────────┘   └─────────┘   └───────┘   └─────┘
+                    │
+                    ↓ (if failed)
+              ┌──────────┐
+              │  Reject  │ → END
+              └──────────┘
+```
+
+### 4. Callback 处理器 (internal/eino/callbacks/)
+
+Callback 处理器提供可观测性支持，在组件执行的各个阶段被调用。
+
+#### Callback 接口
+
+```go
+// Eino Callback 接口
+type Handler interface {
+    OnStart(ctx context.Context, info *RunInfo, input CallbackInput) context.Context
+    OnEnd(ctx context.Context, info *RunInfo, output CallbackOutput) context.Context
+    OnError(ctx context.Context, info *RunInfo, err error) context.Context
+    OnStartWithStreamInput(ctx context.Context, info *RunInfo, input *StreamReader[CallbackInput]) context.Context
+    OnEndWithStreamOutput(ctx context.Context, info *RunInfo, output *StreamReader[CallbackOutput]) context.Context
+}
+```
+
+#### 日志回调
+
+```go
+// internal/eino/callbacks/logging.go
+
+// LoggingHandler 日志回调处理器
+type LoggingHandler struct {
+    logger logger.Logger
+    cfg    *config.LoggingCallbackConfig
+}
+
+// OnStart 组件开始执行时调用
+func (h *LoggingHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
+    h.logger.InfoContext(ctx, "组件开始执行",
+        "component", info.Component,
+        "name", info.Name,
+        "type", info.Type,
+    )
+    return context.WithValue(ctx, startTimeKey, time.Now())
+}
+
+// OnEnd 组件执行完成时调用
+func (h *LoggingHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
+    startTime, _ := ctx.Value(startTimeKey).(time.Time)
+    duration := time.Since(startTime)
+    
+    h.logger.InfoContext(ctx, "组件执行完成",
+        "component", info.Component,
+        "name", info.Name,
+        "duration_ms", duration.Milliseconds(),
+    )
+    return ctx
+}
+```
+
+#### 指标回调
+
+```go
+// internal/eino/callbacks/metrics.go
+
+// MetricsHandler 指标回调处理器
+type MetricsHandler struct {
+    cfg     *config.MetricsCallbackConfig
+    metrics *MetricsCollector
+}
+
+// GetMetrics 获取当前指标
+func (h *MetricsHandler) GetMetrics() map[string]interface{} {
+    return map[string]interface{}{
+        "total_calls":      h.metrics.TotalCalls,
+        "successful_calls": h.metrics.SuccessfulCalls,
+        "failed_calls":     h.metrics.FailedCalls,
+        "avg_latency_ms":   h.metrics.TotalLatencyMs / h.metrics.SuccessfulCalls,
+        "component_stats":  h.metrics.ComponentLatency,
+    }
+}
+```
+
+#### Callback 工厂
+
+```go
+// internal/eino/callbacks/factory.go
+
+// Factory Callback 工厂
+type Factory struct {
+    cfg    *config.CallbacksConfig
+    logger logger.Logger
+}
+
+// CreateHandlers 创建所有启用的 Callback 处理器
+func (f *Factory) CreateHandlers() []callbacks.Handler {
+    handlers := make([]callbacks.Handler, 0)
+    
+    if f.cfg.Logging.Enabled {
+        handlers = append(handlers, NewLoggingHandler(f.logger, &f.cfg.Logging))
+    }
+    if f.cfg.Metrics.Enabled {
+        handlers = append(handlers, NewMetricsHandler(&f.cfg.Metrics))
+    }
+    if f.cfg.Tracing.Enabled {
+        handlers = append(handlers, NewTracingHandler(&f.cfg.Tracing, f.logger))
+    }
+    // Langfuse, APMPlus, Cozeloop 等外部集成
+    
+    return handlers
+}
+```
+
+## 数据流程
+
+### 缓存查询流程
+
+```
+1. 客户端发送查询请求
+   POST /v1/cache/search
+   {"question": "什么是机器学习?", "user_type": "default"}
+
+2. CacheHandler 接收请求
+   - 参数验证
+   - 构建 CacheQueryInput
+
+3. queryRunner.Invoke(ctx, input)
+   - Preprocess: 清洗查询文本
+   - Retrieve: 向量检索 Top-K 结果
+   - Select: 选择最佳匹配
+   - Postprocess: 格式化输出
+
+4. 返回响应
+   {"hit": true, "answer": "...", "score": 0.95}
+```
+
+### 缓存存储流程
+
+```
+1. 客户端发送存储请求
+   POST /v1/cache/store
+   {"question": "...", "answer": "...", "user_type": "default"}
+
+2. CacheHandler 接收请求
+   - 参数验证
+   - 构建 CacheStoreInput
+
+3. storeRunner.Invoke(ctx, input)
+   - QualityCheck: 质量检查
+     - 通过 → 继续
+     - 失败 → 拒绝存储
+   - Embed: 生成向量
+   - Index: 存储到向量数据库
+
+4. 返回响应
+   {"success": true, "cache_id": "..."}
+```
+
+## 配置说明
+
+### Eino 配置结构
+
+```go
+// internal/eino/config/config.go
+
+// EinoConfig Eino 框架相关配置
+type EinoConfig struct {
+    Embedder   EmbedderConfig   `yaml:"embedder"`
+    Retriever  RetrieverConfig  `yaml:"retriever"`
+    Indexer    IndexerConfig    `yaml:"indexer"`
+    Query      QueryConfig      `yaml:"query"`
+    Store      StoreConfig      `yaml:"store"`
+    Quality    QualityConfig    `yaml:"quality"`
+    Callbacks  CallbacksConfig  `yaml:"callbacks"`
+}
+```
+
+### 配置示例
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-
-  llm-cache:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      - qdrant
-    volumes:
-      - ./configs:/app/configs
-      - ./logs:/app/logs
-
-volumes:
-  qdrant_data:
+# configs/config.yaml
+eino:
+  embedder:
+    provider: "openai"
+    api_key: "${OPENAI_API_KEY}"
+    model: "text-embedding-3-small"
+    timeout: 30
+  
+  retriever:
+    provider: "qdrant"
+    collection: "llm_cache"
+    top_k: 5
+    score_threshold: 0.7
+    qdrant:
+      host: "localhost"
+      port: 6334
+  
+  indexer:
+    provider: "qdrant"
+    collection: "llm_cache"
+    vector_size: 1536
+    qdrant:
+      host: "localhost"
+      port: 6334
+      distance: "Cosine"
+  
+  query:
+    preprocess_enabled: true
+    postprocess_enabled: true
+    selection_strategy: "highest_score"
+    temperature: 0.7
+  
+  store:
+    quality_check_enabled: true
+    min_question_length: 5
+    min_answer_length: 10
+  
+  callbacks:
+    logging:
+      enabled: true
+      level: "info"
+    metrics:
+      enabled: true
 ```
 
-### 9.4 环境变量配置
+## 扩展指南
+
+### 添加新的 Embedding 提供商
+
+1. 在 `internal/eino/components/embedder.go` 中添加新的 case：
+
+```go
+case "new_provider":
+    return newprovider.NewEmbedder(ctx, &newprovider.EmbeddingConfig{
+        // 配置参数
+    })
+```
+
+2. 在 `internal/eino/config/config.go` 中添加相应的配置字段。
+
+### 添加新的向量数据库
+
+1. 在 `internal/eino/components/retriever.go` 和 `indexer.go` 中添加新的 case。
+2. 确保使用 `eino-ext` 提供的组件，或实现 `retriever.Retriever` 和 `indexer.Indexer` 接口。
+
+### 添加新的 Lambda 节点
+
+1. 在 `internal/eino/nodes/` 中创建新的节点文件。
+2. 实现节点函数，签名为 `func(context.Context, InputType) (OutputType, error)`。
+3. 在 Graph 中添加节点：`graph.AddLambdaNode("name", compose.InvokableLambda(nodeFunc))`。
+
+### 添加新的 Callback
+
+1. 在 `internal/eino/callbacks/` 中创建新的 callback 文件。
+2. 实现 `callbacks.Handler` 接口。
+3. 在 `factory.go` 中的 `CreateHandlers` 方法中添加创建逻辑。
+
+## 性能优化
+
+### 向量检索优化
+
+- 使用 HNSW 索引加速 ANN 检索
+- 合理设置 `top_k` 和 `score_threshold` 减少无效结果
+- 对于高并发场景，使用连接池
+
+### Embedding 优化
+
+- 批量处理请求，减少 API 调用次数
+- 使用本地 Embedding 模型（Ollama）降低延迟
+- 缓存常见查询的向量结果
+
+### Graph 执行优化
+
+- 使用并行节点处理独立任务
+- 合理设置 Timeout 避免长时间阻塞
+- 使用 Callback 监控性能瓶颈
+
+## 测试策略
+
+### 单元测试
 
 ```bash
-# OpenAI配置
-OPENAI_API_KEY=sk-xxx
-OPENAI_API_ENDPOINT=https://api.openai.com/v1
+# 运行所有单元测试
+go test ./...
 
-# Qdrant配置
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
+# 运行 Eino 节点测试
+go test ./internal/eino/nodes/... -v
 
-# 服务配置
-SERVER_PORT=8080
-LOG_LEVEL=info
+# 覆盖率报告
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
 ```
 
----
-
-## 10. 开发指南
-
-### 10.1 项目初始化
+### 集成测试
 
 ```bash
-# 克隆项目
-git clone <repository-url>
-cd LLM-Cache
+# 启动本地 Qdrant
+docker run -d -p 6333:6333 -p 6334:6334 qdrant/qdrant:latest
 
-# 安装依赖
-go mod download
-
-# 复制配置文件
-cp configs/config.yaml.example configs/config.yaml
-# 编辑配置文件，填入必要的API Key等
-
-# 启动Qdrant（Docker）
-docker run -p 6333:6333 qdrant/qdrant
-
-# 运行项目
-go run cmd/server/main.go
+# 运行集成测试
+go test -tags=integration ./test/...
 ```
 
-### 10.2 目录职责
+## 参考文档
 
-```
-cmd/server/main.go          # 应用入口，依赖注入
-internal/app/handlers/       # HTTP请求处理
-internal/app/middleware/     # 中间件
-internal/app/server/         # 服务器配置
-internal/domain/models/      # 领域模型
-internal/domain/services/    # 服务接口
-internal/domain/repositories/# 仓储接口
-internal/infrastructure/     # 具体实现
-configs/                     # 配置文件
-pkg/                         # 工具包
-```
-
-### 10.3 核心接口实现规范
-
-- **服务接口**：定义在`internal/domain/services/`
-- **具体实现**：放在`internal/infrastructure/`对应模块
-- **依赖注入**：通过工厂模式在`main.go`组装
-- **错误处理**：返回包装的error，记录日志
-
----
-
-## 11. 扩展性设计
-
-### 11.1 支持多种向量数据库
-
-当前实现Qdrant，可扩展支持：
-- **Milvus**：实现`VectorRepository`接口
-- **Weaviate**：实现`VectorRepository`接口
-- **Pinecone**：实现`VectorRepository`接口
-
-### 11.2 支持多种嵌入模型
-
-当前实现OpenAI，可扩展支持：
-- **本地模型**：ONNX/TensorFlow模型
-- **其他API**：Cohere、HuggingFace等
-- **自定义模型**：实现`EmbeddingService`接口
-
-### 11.3 插件化质量策略
-
-质量评估支持多策略组合，可灵活添加：
-- 自定义评分策略
-- 基于ML的质量预测
-- 业务规则引擎
-
----
-
-## 12. 性能指标
-
-### 12.1 关键性能指标
-
-| 指标 | 目标值 | 说明 |
-|------|--------|------|
-| 缓存查询延迟 | < 100ms | P95，包含向量化和检索 |
-| 缓存写入延迟 | < 200ms | P95，包含质量评估和存储 |
-| 并发QPS | > 1000 | 单实例，8核16G |
-| 缓存命中率 | > 80% | 取决于业务场景 |
-| 向量检索准确率 | > 95% | Top-10召回率 |
-
-### 12.2 资源消耗
-
-- **CPU**：2-4核（推荐4核）
-- **内存**：4-8GB（推荐8GB）
-- **磁盘**：取决于缓存规模，建议SSD
-- **网络**：稳定的互联网连接（调用OpenAI API）
-
----
-
-## 13. 已知限制与未来规划
-
-### 13.1 当前限制
-
-1. **单实例部署**：暂不支持分布式集群
-2. **向量数据库单一**：仅支持Qdrant
-3. **缓存淘汰策略**：未实现TTL和LRU淘汰
-4. **监控指标**：缺少Prometheus等监控集成
-
-### 13.2 未来规划
-
-- [ ] 分布式部署支持
-- [ ] 更多向量数据库适配
-- [ ] 缓存淘汰策略
-- [ ] Prometheus监控指标
-- [ ] gRPC接口支持
-- [ ] 流式响应支持
-- [ ] 更丰富的质量评估策略
-
----
-
-## 14. 附录
-
-### 14.1 参考文档
-
-- [Go官方文档](https://golang.org/doc/)
-- [Gin框架文档](https://gin-gonic.com/docs/)
-- [Qdrant文档](https://qdrant.tech/documentation/)
-- [OpenAI API文档](https://platform.openai.com/docs/api-reference)
-
-### 14.2 代码规范
-
-- 遵循[Effective Go](https://golang.org/doc/effective_go.html)
-- 使用`gofmt`格式化代码
-- 每个exported函数必须有注释
-- 使用有意义的变量和函数命名
-
-### 14.3 Git分支策略
-
-- `main` - 稳定发布分支
-- `develop` - 开发主分支
-- `feature/*` - 功能分支
-- `hotfix/*` - 紧急修复分支
-
----
-
-**文档维护者**：LLM-Cache开发团队  
-**联系方式**：[待补充]  
-**最后审核日期**：2025-01-01
+- [CloudWeGo Eino 框架](https://github.com/cloudwego/eino)
+- [Eino 扩展组件](https://github.com/cloudwego/eino-ext)
+- [Qdrant 文档](https://qdrant.tech/documentation/)
+- [Eino 集成方案](./EINO_INTEGRATION_PLAN.md)
 

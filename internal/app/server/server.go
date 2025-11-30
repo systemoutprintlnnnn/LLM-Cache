@@ -44,10 +44,11 @@ func NewServer(config *configs.ServerConfig, cacheHandler *handlers.CacheHandler
 	}
 }
 
-// Start 启动HTTP服务器
-// ctx: 上下文，用于控制服务器启动过程
-func (s *Server) Start(ctx context.Context) error {
-
+// Start 启动HTTP服务器（非阻塞）
+// ctx: 上下文，用于日志记录
+// errChan: 错误通道，用于传递服务器运行时错误（如端口被占用）
+// 注意：调用者应该监听 errChan 以处理服务器启动后的运行时错误
+func (s *Server) Start(ctx context.Context, errChan chan<- error) {
 	// 设置路由
 	SetupRoutes(s.engine, s.cacheHandler, s.logger)
 
@@ -71,11 +72,13 @@ func (s *Server) Start(ctx context.Context) error {
 		s.logger.InfoContext(ctx, "HTTP服务器开始监听", "addr", s.httpServer.Addr)
 
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			s.logger.ErrorContext(ctx, "HTTP服务器启动失败", "error", err.Error())
+			s.logger.ErrorContext(ctx, "HTTP服务器运行错误", "error", err.Error())
+			// 将错误传递给调用者
+			if errChan != nil {
+				errChan <- fmt.Errorf("HTTP服务器运行错误: %w", err)
+			}
 		}
 	}()
-
-	return nil
 }
 
 // Shutdown 优雅关闭服务器
