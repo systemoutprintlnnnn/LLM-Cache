@@ -26,42 +26,37 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 创建早期logger（使用默认配置）
-	earlyLogger := logger.Default()
-
-	// 初始化应用程序
-	if err := initializeApplication(ctx, earlyLogger); err != nil {
-		earlyLogger.ErrorContext(ctx, "应用程序初始化失败", "error", err)
+	// 初始化并运行应用程序
+	if err := run(ctx); err != nil {
+		// 启动失败时使用标准错误输出
+		fmt.Fprintf(os.Stderr, "应用程序启动失败: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// initializeApplication 初始化应用程序
-func initializeApplication(ctx context.Context, earlyLogger logger.Logger) error {
-
+// run 运行应用程序
+func run(ctx context.Context) error {
 	// 1. 加载配置
 	config, err := configs.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("配置加载失败: %w", err)
 	}
 
-	earlyLogger.InfoContext(ctx, "配置加载成功",
-		"server_port", config.Server.Port,
-		"eino_embedder_provider", config.Eino.Embedder.Provider,
-		"eino_retriever_provider", config.Eino.Retriever.Provider)
-
-	// 2. 初始化日志服务
+	// 2. 初始化日志服务（尽早初始化，后续步骤都可使用）
 	appLogger, err := initializeLogger(config.Logging)
 	if err != nil {
 		return fmt.Errorf("日志服务初始化失败: %w", err)
 	}
 
-	appLogger.InfoContext(ctx, "日志服务初始化完成")
+	appLogger.InfoContext(ctx, "应用程序启动",
+		"server_port", config.Server.Port,
+		"eino_embedder_provider", config.Eino.Embedder.Provider,
+		"eino_retriever_provider", config.Eino.Retriever.Provider)
 
 	// 3. 初始化 Eino 组件
 	queryRunner, storeRunner, deleteService, err := initializeEinoComponents(ctx, &config.Eino, appLogger)
 	if err != nil {
-		return fmt.Errorf("Eino 组件初始化失败: %w", err)
+		return fmt.Errorf("eino 组件初始化失败: %w", err)
 	}
 	appLogger.InfoContext(ctx, "Eino 组件初始化完成")
 
@@ -121,7 +116,7 @@ func initializeEinoComponents(
 
 	embedder, err := components.NewEmbedder(ctx, &einoCfg.Embedder)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Embedder 初始化失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("embedder 初始化失败: %w", err)
 	}
 	log.InfoContext(ctx, "Embedder 初始化成功")
 
@@ -132,7 +127,7 @@ func initializeEinoComponents(
 
 	retriever, err := components.NewRetriever(ctx, &einoCfg.Retriever, embedder)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Retriever 初始化失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("retriever 初始化失败: %w", err)
 	}
 	log.InfoContext(ctx, "Retriever 初始化成功")
 
@@ -143,7 +138,7 @@ func initializeEinoComponents(
 
 	indexer, err := components.NewIndexer(ctx, &einoCfg.Indexer, embedder)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Indexer 初始化失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("indexer 初始化失败: %w", err)
 	}
 	log.InfoContext(ctx, "Indexer 初始化成功")
 
@@ -151,7 +146,7 @@ func initializeEinoComponents(
 	queryGraph := flows.NewCacheQueryGraph(embedder, retriever, &einoCfg.Query)
 	queryRunner, err := queryGraph.Compile(ctx)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Query Graph 编译失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("query graph 编译失败: %w", err)
 	}
 	log.InfoContext(ctx, "Query Graph 编译成功")
 
@@ -159,14 +154,14 @@ func initializeEinoComponents(
 	storeGraph := flows.NewCacheStoreGraph(embedder, indexer, &einoCfg.Store, &einoCfg.Quality)
 	storeRunner, err := storeGraph.Compile(ctx)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Store Graph 编译失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("store graph 编译失败: %w", err)
 	}
 	log.InfoContext(ctx, "Store Graph 编译成功")
 
 	// 6. 创建 Delete Service
 	deleteService, err := flows.NewCacheDeleteService(&einoCfg.Retriever)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Delete Service 初始化失败: %w", err)
+		return nil, nil, nil, fmt.Errorf("delete service 初始化失败: %w", err)
 	}
 	log.InfoContext(ctx, "Delete Service 创建成功")
 
