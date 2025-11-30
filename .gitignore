@@ -39,7 +39,7 @@ configs/*.local.yaml
 .idea/
 .vscode/
 *.iml
-.cursor/
+.cursor/*
 !.cursor/plans/
 
 # OS-specific files
