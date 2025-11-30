@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 
 	einoconfig "llm-cache/internal/eino/config"
@@ -13,6 +14,10 @@ import (
 
 // Load 从配置文件加载配置
 func Load(ctx context.Context) (*Config, error) {
+	// 加载 .env 文件（如果存在）
+	// 忽略错误，因为 .env 文件是可选的
+	_ = godotenv.Load()
+
 	config := DefaultConfig()
 
 	// 尝试加载配置文件

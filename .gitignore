@@ -46,3 +46,5 @@ configs/*.local.yaml
 .DS_Store
 Thumbs.db
 
+
+server
