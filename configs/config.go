@@ -311,15 +311,18 @@ func (q *QualityConfig) Validate() error {
 		return fmt.Errorf("quality threshold must be between 0 and 1")
 	}
 
-	totalWeight := 0.0
-	for _, strategy := range q.Strategies {
-		if strategy.Enabled {
-			totalWeight += strategy.Weight
+	// 只有当配置了策略时才检查权重
+	if len(q.Strategies) > 0 {
+		totalWeight := 0.0
+		for _, strategy := range q.Strategies {
+			if strategy.Enabled {
+				totalWeight += strategy.Weight
+			}
 		}
-	}
 
-	if totalWeight <= 0 {
-		return fmt.Errorf("total weight of enabled strategies must be positive")
+		if totalWeight <= 0 {
+			return fmt.Errorf("total weight of enabled strategies must be positive")
+		}
 	}
 
 	return nil

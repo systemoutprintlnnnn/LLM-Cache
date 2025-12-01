@@ -77,4 +77,3 @@ func TestPreprocessQuery(t *testing.T) {
 		t.Errorf("expected user_type preserved, got %q", output.UserType)
 	}
 }
-

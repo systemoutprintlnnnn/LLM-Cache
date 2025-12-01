@@ -170,4 +170,3 @@ func TestCalculateQualityScore(t *testing.T) {
 		})
 	}
 }
-

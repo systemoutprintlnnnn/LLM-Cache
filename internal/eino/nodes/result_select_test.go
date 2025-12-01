@@ -150,4 +150,3 @@ func TestGetDocScore(t *testing.T) {
 		})
 	}
 }
-
