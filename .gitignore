@@ -1,0 +1,50 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.coverprofile
+*.cov
+*.pprof
+coverage.*
+profile.out
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Local build and temp output
+bin/
+dist/
+tmp/
+*.tmp
+*.swp
+*.swo
+
+# Logs and runtime data
+logs/
+*.log
+
+# Local environment and config overrides
+.env
+.env.*
+!.env.example
+configs/config.yaml
+configs/*.local.yaml
+
+# Editor and tooling metadata
+.idea/
+.vscode/
+*.iml
+.cursor/*
+!.cursor/plans/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Binary files
+/server
