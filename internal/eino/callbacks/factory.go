@@ -8,13 +8,17 @@ import (
 	"llm-cache/pkg/logger"
 )
 
-// Factory Callback 工厂
+// Factory 负责创建和管理 Eino 框架的各类 Callback 处理器。
+// 它根据配置动态实例化日志、监控、追踪等处理器。
 type Factory struct {
 	cfg    *config.CallbacksConfig
 	logger logger.Logger
 }
 
-// NewFactory 创建 Callback 工厂
+// NewFactory 创建一个新的 Callback 工厂实例。
+// 参数 cfg: 回调系统配置。
+// 参数 log: 日志记录器。
+// 返回: 初始化后的 Factory 指针。
 func NewFactory(cfg *config.CallbacksConfig, log logger.Logger) *Factory {
 	return &Factory{
 		cfg:    cfg,
@@ -22,7 +26,8 @@ func NewFactory(cfg *config.CallbacksConfig, log logger.Logger) *Factory {
 	}
 }
 
-// CreateHandlers 创建所有启用的 Callback 处理器
+// CreateHandlers 根据配置创建并返回所有启用的 Callback 处理器列表。
+// 这些处理器将被注入到 Eino Graph 中，用于监控组件的运行状态。
 func (f *Factory) CreateHandlers() []callbacks.Handler {
 	handlers := make([]callbacks.Handler, 0)
 
@@ -130,7 +135,8 @@ func (f *Factory) createCozeloopHandler() callbacks.Handler {
 	return nil
 }
 
-// GetLoggingHandler 获取日志回调处理器
+// GetLoggingHandler 获取日志回调处理器实例。
+// 如果未启用日志回调，则返回 nil。
 func (f *Factory) GetLoggingHandler() callbacks.Handler {
 	if !f.cfg.Logging.Enabled {
 		return nil
@@ -138,7 +144,8 @@ func (f *Factory) GetLoggingHandler() callbacks.Handler {
 	return NewLoggingHandler(f.logger, &f.cfg.Logging)
 }
 
-// GetMetricsHandler 获取指标回调处理器
+// GetMetricsHandler 获取指标回调处理器实例。
+// 如果未启用指标回调，则返回 nil。
 func (f *Factory) GetMetricsHandler() *MetricsHandler {
 	if !f.cfg.Metrics.Enabled {
 		return nil
@@ -146,7 +153,8 @@ func (f *Factory) GetMetricsHandler() *MetricsHandler {
 	return NewMetricsHandler(&f.cfg.Metrics).(*MetricsHandler)
 }
 
-// GetTracingHandler 获取链路追踪回调处理器
+// GetTracingHandler 获取链路追踪回调处理器实例。
+// 如果未启用追踪回调，则返回 nil。
 func (f *Factory) GetTracingHandler() callbacks.Handler {
 	if !f.cfg.Tracing.Enabled {
 		return nil

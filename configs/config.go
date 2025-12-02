@@ -7,7 +7,8 @@ import (
 	einoconfig "llm-cache/internal/eino/config"
 )
 
-// Config 主配置结构体
+// Config 主配置结构体，定义了应用程序的所有配置项。
+// 包含服务器、数据库、嵌入模型、日志、缓存和质量评估等模块的配置信息。
 type Config struct {
 	Server    ServerConfig          `yaml:"server"`
 	Database  DatabaseConfig        `yaml:"database"`
@@ -18,7 +19,8 @@ type Config struct {
 	Eino      einoconfig.EinoConfig `yaml:"eino"` // Eino 框架配置
 }
 
-// ServerConfig 服务器配置
+// ServerConfig 定义服务器相关的配置参数。
+// 包含监听地址、端口、超时设置和连接限制等。
 type ServerConfig struct {
 	Host                    string        `yaml:"host"`
 	Port                    int           `yaml:"port"`
@@ -29,13 +31,15 @@ type ServerConfig struct {
 	MaxConnections          int           `yaml:"max_connections"`
 }
 
-// DatabaseConfig 向量数据库配置
+// DatabaseConfig 定义向量数据库的配置参数。
+// 支持多种类型的向量数据库（目前主要支持 qdrant）。
 type DatabaseConfig struct {
 	Type   string       `yaml:"type"`
 	Qdrant QdrantConfig `yaml:"qdrant"`
 }
 
-// QdrantConfig Qdrant向量数据库配置
+// QdrantConfig 定义 Qdrant 向量数据库的具体配置。
+// 包含连接信息、集合名称、向量维度和距离度量方式等。
 type QdrantConfig struct {
 	Host           string        `yaml:"host"`
 	Port           int           `yaml:"port"`
@@ -48,21 +52,24 @@ type QdrantConfig struct {
 	RetryDelay     time.Duration `yaml:"retry_delay"`
 }
 
-// EmbeddingConfig 嵌入模型配置
+// EmbeddingConfig 定义嵌入模型（Embedding）的配置参数。
+// 支持本地模型和远程 API 调用两种模式。
 type EmbeddingConfig struct {
 	Type   string          `yaml:"type"`
 	Local  LocalEmbedding  `yaml:"local"`
 	Remote RemoteEmbedding `yaml:"remote"`
 }
 
-// LocalEmbedding 本地嵌入模型配置
+// LocalEmbedding 定义本地嵌入模型的配置。
+// 包含模型文件路径、最大 token 数和批处理大小等。
 type LocalEmbedding struct {
 	ModelPath string `yaml:"model_path"`
 	MaxTokens int    `yaml:"max_tokens"`
 	BatchSize int    `yaml:"batch_size"`
 }
 
-// RemoteEmbedding 远程嵌入模型配置
+// RemoteEmbedding 定义远程嵌入模型 API 的配置。
+// 包含 API 端点、密钥、模型名称和重试策略等。
 type RemoteEmbedding struct {
 	APIEndpoint string            `yaml:"api_endpoint"`
 	APIKey      string            `yaml:"api_key"`
@@ -73,7 +80,8 @@ type RemoteEmbedding struct {
 	Headers     map[string]string `yaml:"headers"`
 }
 
-// LoggingConfig 日志配置
+// LoggingConfig 定义日志系统的配置参数。
+// 包含日志级别、输出目标（stdout/file）和文件轮转设置等。
 type LoggingConfig struct {
 	Level      string `yaml:"level"`
 	Output     string `yaml:"output"`
@@ -84,7 +92,8 @@ type LoggingConfig struct {
 	Compress   bool   `yaml:"compress"`
 }
 
-// CacheConfig 缓存配置
+// CacheConfig 定义语义缓存的核心配置参数。
+// 包含相似度阈值、返回结果数量、过期时间和缓存大小限制等。
 type CacheConfig struct {
 	SimilarityThreshold float64       `yaml:"similarity_threshold"`
 	TopK                int           `yaml:"top_k"`
@@ -95,7 +104,8 @@ type CacheConfig struct {
 	UpdateInterval      time.Duration `yaml:"update_interval"`
 }
 
-// QualityConfig 质量评估配置
+// QualityConfig 定义回答质量评估的配置参数。
+// 包含开关、阈值、评估策略和黑名单规则等。
 type QualityConfig struct {
 	Enabled    bool              `yaml:"enabled"`
 	Threshold  float64           `yaml:"threshold"`
@@ -103,7 +113,8 @@ type QualityConfig struct {
 	Blacklist  QualityBlacklist  `yaml:"blacklist"`
 }
 
-// QualityStrategy 质量评估策略
+// QualityStrategy 定义具体的质量评估策略。
+// 包含策略名称、权重和特定的配置参数。
 type QualityStrategy struct {
 	Name    string                 `yaml:"name"`
 	Weight  float64                `yaml:"weight"`
@@ -111,7 +122,8 @@ type QualityStrategy struct {
 	Config  map[string]interface{} `yaml:"config"`
 }
 
-// QualityBlacklist 质量评估黑名单
+// QualityBlacklist 定义质量评估的黑名单规则。
+// 包含关键词过滤和文本长度限制等条件。
 type QualityBlacklist struct {
 	ApologyKeywords   []string `yaml:"apology_keywords"`
 	ErrorKeywords     []string `yaml:"error_keywords"`
@@ -121,7 +133,8 @@ type QualityBlacklist struct {
 	MaxQuestionLength int      `yaml:"max_question_length"`
 }
 
-// Validate 验证配置的有效性
+// Validate 检查 Config 配置结构体的有效性。
+// 依次调用各个子配置项的 Validate 方法，如果发现无效配置，返回相应的错误。
 func (c *Config) Validate() error {
 	if err := c.Server.Validate(); err != nil {
 		return fmt.Errorf("server config validation failed: %w", err)
@@ -150,7 +163,8 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Validate 验证服务器配置
+// Validate 检查 ServerConfig 配置的有效性。
+// 确保端口号在有效范围内，且超时设置和最大连接数为正数。
 func (s *ServerConfig) Validate() error {
 	if s.Port <= 0 || s.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", s.Port)
@@ -171,7 +185,8 @@ func (s *ServerConfig) Validate() error {
 	return nil
 }
 
-// Validate 验证数据库配置
+// Validate 检查 DatabaseConfig 配置的有效性。
+// 确保存储类型已指定且受支持（如 qdrant）。
 func (d *DatabaseConfig) Validate() error {
 	if d.Type == "" {
 		return fmt.Errorf("database type is required")
@@ -184,7 +199,8 @@ func (d *DatabaseConfig) Validate() error {
 	return fmt.Errorf("unsupported database type: %s", d.Type)
 }
 
-// Validate 验证Qdrant配置
+// Validate 检查 QdrantConfig 配置的有效性。
+// 确保 Host、Port、CollectionName 和 VectorSize 等关键参数已正确设置。
 func (q *QdrantConfig) Validate() error {
 	if q.Host == "" {
 		return fmt.Errorf("qdrant host is required")
@@ -209,7 +225,8 @@ func (q *QdrantConfig) Validate() error {
 	return nil
 }
 
-// Validate 验证嵌入模型配置
+// Validate 检查 EmbeddingConfig 配置的有效性。
+// 确保存储类型已指定，并调用相应的本地或远程配置验证方法。
 func (e *EmbeddingConfig) Validate() error {
 	if e.Type == "" {
 		return fmt.Errorf("embedding type is required")
@@ -225,7 +242,8 @@ func (e *EmbeddingConfig) Validate() error {
 	}
 }
 
-// Validate 验证本地嵌入模型配置
+// Validate 检查 LocalEmbedding 配置的有效性。
+// 确保模型路径已指定，并设置默认的批处理大小（如果未设置）。
 func (l *LocalEmbedding) Validate() error {
 	if l.ModelPath == "" {
 		return fmt.Errorf("local embedding model path is required")
@@ -238,7 +256,8 @@ func (l *LocalEmbedding) Validate() error {
 	return nil
 }
 
-// Validate 验证远程嵌入模型配置
+// Validate 检查 RemoteEmbedding 配置的有效性。
+// 确保 API 端点和模型名称已指定，并设置默认的超时时间（如果未设置）。
 func (r *RemoteEmbedding) Validate() error {
 	if r.APIEndpoint == "" {
 		return fmt.Errorf("remote embedding API endpoint is required")
@@ -255,7 +274,8 @@ func (r *RemoteEmbedding) Validate() error {
 	return nil
 }
 
-// Validate 验证日志配置
+// Validate 检查 LoggingConfig 配置的有效性。
+// 确保日志级别和输出目标有效，如果输出到文件，确保文件路径已指定。
 func (l *LoggingConfig) Validate() error {
 	validLevels := map[string]bool{
 		"debug": true, "info": true, "warn": true, "error": true,
@@ -280,7 +300,8 @@ func (l *LoggingConfig) Validate() error {
 	return nil
 }
 
-// Validate 验证缓存配置
+// Validate 检查 CacheConfig 配置的有效性。
+// 确保相似度阈值在 0-1 之间，TopK 和 TTL 为正数，且异步更新配置正确。
 func (c *CacheConfig) Validate() error {
 	if c.SimilarityThreshold < 0 || c.SimilarityThreshold > 1 {
 		return fmt.Errorf("similarity threshold must be between 0 and 1")
@@ -301,7 +322,8 @@ func (c *CacheConfig) Validate() error {
 	return nil
 }
 
-// Validate 验证质量评估配置
+// Validate 检查 QualityConfig 配置的有效性。
+// 如果启用，确保阈值在 0-1 之间，且启用策略的总权重为正数。
 func (q *QualityConfig) Validate() error {
 	if !q.Enabled {
 		return nil
@@ -328,12 +350,14 @@ func (q *QualityConfig) Validate() error {
 	return nil
 }
 
-// GetAddr 获取服务器监听地址
+// GetAddr 获取服务器的完整监听地址。
+// 返回格式为 "Host:Port" 的字符串。
 func (s *ServerConfig) GetAddr() string {
 	return fmt.Sprintf("%s:%d", s.Host, s.Port)
 }
 
-// GetQdrantAddr 获取Qdrant地址
+// GetQdrantAddr 获取 Qdrant 服务的完整地址。
+// 返回格式为 "Host:Port" 的字符串。
 func (q *QdrantConfig) GetAddr() string {
 	return fmt.Sprintf("%s:%d", q.Host, q.Port)
 }

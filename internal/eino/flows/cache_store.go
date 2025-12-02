@@ -17,7 +17,8 @@ import (
 	"llm-cache/internal/eino/nodes"
 )
 
-// CacheStoreInput 存储输入
+// CacheStoreInput 定义缓存存储请求的输入参数。
+// 包含问答对、用户类型、元数据和强制写入标志。
 type CacheStoreInput struct {
 	Question   string         `json:"question"`
 	Answer     string         `json:"answer"`
@@ -26,7 +27,8 @@ type CacheStoreInput struct {
 	ForceWrite bool           `json:"force_write,omitempty"`
 }
 
-// CacheStoreOutput 存储输出
+// CacheStoreOutput 定义缓存存储请求的输出结果。
+// 包含操作成功状态、生成的缓存 ID 和拒绝原因。
 type CacheStoreOutput struct {
 	Success  bool   `json:"success"`
 	CacheID  string `json:"cache_id,omitempty"`
@@ -34,7 +36,8 @@ type CacheStoreOutput struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-// EmbeddingResult 嵌入结果（内部使用）
+// EmbeddingResult 定义嵌入处理的中间结果（内部使用）。
+// 包含原始数据、生成的向量以及可能的拒绝原因。
 type EmbeddingResult struct {
 	Question string
 	Answer   string
@@ -45,7 +48,8 @@ type EmbeddingResult struct {
 	Reason   string
 }
 
-// CacheStoreGraph 缓存存储 Graph
+// CacheStoreGraph 定义缓存存储的 Eino Graph 流程。
+// 包含质量检查、文本向量化和索引存储等步骤，支持基于质量检查结果的条件分支。
 type CacheStoreGraph struct {
 	embedder         embedding.Embedder
 	indexer          indexer.Indexer
@@ -54,7 +58,13 @@ type CacheStoreGraph struct {
 	callbackHandlers []callbacks.Handler
 }
 
-// NewCacheStoreGraph 创建缓存存储 Graph
+// NewCacheStoreGraph 创建一个新的缓存存储 Graph。
+// 参数 embedder: 用于生成向量的 Embedder。
+// 参数 idx: 用于存储向量的 Indexer。
+// 参数 cfg: 存储流程配置。
+// 参数 quality: 质量检查配置。
+// 参数 callbackHandlers: 可选的回调处理器列表。
+// 返回: CacheStoreGraph 指针。
 func NewCacheStoreGraph(
 	embedder embedding.Embedder,
 	idx indexer.Indexer,
@@ -71,7 +81,10 @@ func NewCacheStoreGraph(
 	}
 }
 
-// Compile 编译 Graph 为 Runnable
+// Compile 将 Graph 编译为可执行的 Runnable 实例。
+// 构建节点（质量检查、Embedding、索引）和分支逻辑。
+// 参数 ctx: 上下文对象。
+// 返回: 可执行的 Runnable 对象或错误。
 func (g *CacheStoreGraph) Compile(ctx context.Context) (compose.Runnable[*CacheStoreInput, *CacheStoreOutput], error) {
 	graph := compose.NewGraph[*CacheStoreInput, *CacheStoreOutput]()
 
@@ -211,7 +224,11 @@ func (g *CacheStoreGraph) Compile(ctx context.Context) (compose.Runnable[*CacheS
 	return runnable, nil
 }
 
-// Run 执行存储
+// Run 执行一次完整的缓存存储流程。
+// 编译并运行 Graph。
+// 参数 ctx: 上下文对象。
+// 参数 input: 存储输入。
+// 返回: 存储结果或错误。
 func (g *CacheStoreGraph) Run(ctx context.Context, input *CacheStoreInput) (*CacheStoreOutput, error) {
 	runnable, err := g.Compile(ctx)
 	if err != nil {
@@ -221,7 +238,7 @@ func (g *CacheStoreGraph) Run(ctx context.Context, input *CacheStoreInput) (*Cac
 	return runnable.Invoke(ctx, input)
 }
 
-// generateCacheID 生成缓存 ID
+// generateCacheID 生成唯一的缓存项 ID (UUID)。
 func generateCacheID() string {
 	return uuid.New().String()
 }

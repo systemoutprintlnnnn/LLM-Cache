@@ -7,7 +7,8 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// CacheQueryOutput 缓存查询输出
+// CacheQueryOutput 定义缓存查询的最终输出结构。
+// 包含命中状态、问答对、相似度分数、缓存 ID 以及元数据。
 type CacheQueryOutput struct {
 	Hit      bool           `json:"hit"`
 	Question string         `json:"question,omitempty"`
@@ -17,8 +18,11 @@ type CacheQueryOutput struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// PostprocessResult 后处理结果 Lambda 函数
-// 将 schema.Document 转换为 CacheQueryOutput
+// PostprocessResult 后处理结果 Lambda 函数。
+// 将 Eino 检索到的 schema.Document 对象转换为业务层使用的 CacheQueryOutput 结构。
+// 参数 ctx: 上下文对象。
+// 参数 doc: 检索到的文档对象。
+// 返回: 转换后的查询输出对象或错误。
 func PostprocessResult(ctx context.Context, doc *schema.Document) (*CacheQueryOutput, error) {
 	if doc == nil {
 		return &CacheQueryOutput{
@@ -46,8 +50,11 @@ func PostprocessResult(ctx context.Context, doc *schema.Document) (*CacheQueryOu
 	return output, nil
 }
 
-// PostprocessResults 后处理多个结果
-// 将 []*schema.Document 转换为 []*CacheQueryOutput
+// PostprocessResults 批量处理多个检索结果。
+// 将文档列表转换为查询输出列表。
+// 参数 ctx: 上下文对象。
+// 参数 docs: 文档对象切片。
+// 返回: 查询输出对象切片或错误。
 func PostprocessResults(ctx context.Context, docs []*schema.Document) ([]*CacheQueryOutput, error) {
 	if len(docs) == 0 {
 		return []*CacheQueryOutput{}, nil
@@ -65,8 +72,11 @@ func PostprocessResults(ctx context.Context, docs []*schema.Document) ([]*CacheQ
 	return outputs, nil
 }
 
-// FormatCacheResult 格式化缓存结果
-// 将查询结果格式化为用户友好的格式
+// FormatCacheResult 对缓存查询结果进行最终格式化。
+// 该函数可用于添加额外的业务逻辑，如截断过长的文本或添加特定的标记。
+// 参数 ctx: 上下文对象。
+// 参数 output: 初步处理后的查询输出。
+// 返回: 格式化后的查询输出或错误。
 func FormatCacheResult(ctx context.Context, output *CacheQueryOutput) (*CacheQueryOutput, error) {
 	if output == nil || !output.Hit {
 		return output, nil
@@ -78,7 +88,8 @@ func FormatCacheResult(ctx context.Context, output *CacheQueryOutput) (*CacheQue
 	return output, nil
 }
 
-// ExtractAnswer 从文档中提取答案
+// ExtractAnswer 辅助函数：从文档对象中提取答案文本。
+// 优先尝试从元数据中获取 "answer" 字段，如果不存在则回退到 Content 字段。
 func ExtractAnswer(doc *schema.Document) string {
 	if doc == nil {
 		return ""
@@ -92,7 +103,8 @@ func ExtractAnswer(doc *schema.Document) string {
 	return doc.Content
 }
 
-// ExtractQuestion 从文档中提取问题
+// ExtractQuestion 辅助函数：从文档对象中提取问题文本。
+// 尝试从元数据中获取 "question" 字段。
 func ExtractQuestion(doc *schema.Document) string {
 	if doc == nil {
 		return ""
@@ -105,7 +117,8 @@ func ExtractQuestion(doc *schema.Document) string {
 	return ""
 }
 
-// ExtractScore 从文档中提取分数
+// ExtractScore 辅助函数：从文档对象中提取相关性分数。
+// 尝试从元数据中获取 "score" 字段。
 func ExtractScore(doc *schema.Document) float64 {
 	if doc == nil {
 		return 0

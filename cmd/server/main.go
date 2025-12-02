@@ -20,7 +20,8 @@ import (
 	"llm-cache/pkg/logger"
 )
 
-// main 主函数 - 应用程序入口点
+// main 应用程序入口点。
+// 它负责初始化上下文，并调用 run 函数启动服务。如果启动失败，会打印错误信息并以非零状态码退出。
 func main() {
 	// 创建根上下文
 	ctx, cancel := context.WithCancel(context.Background())
