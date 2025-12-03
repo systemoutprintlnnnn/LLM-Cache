@@ -5,7 +5,7 @@
 - `configs/` – `config.go` schema plus loader stubs; runtime values live in `configs/config.yaml`.
 - `internal/app/` – Gin routes, middleware, and HTTP handlers.
 - `internal/domain/` – core models with service and repository interfaces.
-- `internal/infrastructure/` – concrete adapters: cache pipeline, preprocessing/postprocessing, quality checks, vector store, embedding clients.
+- `internal/eino/` – Eino-based implementation: flows (pipelines), nodes (processing steps), and components (adapters).
 - `pkg/` – shared utilities (logger, status codes); integration scaffolding in `test/`; architectural notes in `docs/project/`.
 
 ## Build, Test, and Development Commands
@@ -19,7 +19,7 @@
 ## Coding Style & Naming Conventions
 - Go idioms with `gofmt`; keep functions context-aware (`ctx` first) and prefer structured logging via `pkg/logger`.
 - YAML keys use `lower_snake_case`; exported Go types use UpperCamelCase.
-- Keep HTTP handlers thin; business logic in `internal/domain`, infra details in `internal/infrastructure`.
+- Keep HTTP handlers thin; business logic in `internal/domain`, infra details in `internal/eino` (components/nodes).
 
 ## Testing Guidelines
 - Co-locate tests as `*_test.go`; favor table-driven cases and deterministic behavior.

@@ -8,8 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SetupRoutes 设置HTTP路由
-// 这是整个HTTP服务的交通枢纽，建立外部HTTP请求路径与内部处理逻辑之间的映射关系
+// SetupRoutes 配置并注册 HTTP 服务器的所有路由规则。
+// 它负责加载中间件，定义 API 版本分组，并将 URL 路径映射到相应的处理函数。
+// 参数 engine: Gin 引擎实例。
+// 参数 cacheHandler: 业务逻辑处理器。
+// 参数 log: 日志记录器。
 func SetupRoutes(engine *gin.Engine, cacheHandler *handlers.CacheHandler, log logger.Logger) {
 	// 应用全局中间件
 	setupMiddleware(engine, log)

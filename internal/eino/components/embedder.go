@@ -12,7 +12,11 @@ import (
 	"llm-cache/internal/eino/config"
 )
 
-// NewEmbedder 根据配置创建 Eino Embedder 实例
+// NewEmbedder 根据配置创建并返回一个 Eino Embedder 实例。
+// 支持 OpenAI, ARK, Ollama, Dashscope, Qianfan, Tencentcloud 等多种提供商。
+// 参数 ctx: 上下文对象。
+// 参数 cfg: Embedder 配置，包含提供商类型、API 密钥、模型名称等。
+// 返回: 初始化后的 Embedder 实例，如果提供商不支持或初始化失败则返回错误。
 func NewEmbedder(ctx context.Context, cfg *config.EmbedderConfig) (embedding.Embedder, error) {
 	timeout := time.Duration(cfg.Timeout) * time.Second
 

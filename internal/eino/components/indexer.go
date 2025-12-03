@@ -13,7 +13,12 @@ import (
 	"llm-cache/internal/eino/config"
 )
 
-// NewIndexer 根据配置创建 Eino Indexer 实例
+// NewIndexer 根据配置创建并返回一个 Eino Indexer 实例。
+// 支持 Qdrant, Milvus, Redis, Elasticsearch, VikingDB 等多种后端存储。
+// 参数 ctx: 上下文对象。
+// 参数 cfg: Indexer 配置，包含后端类型、连接信息和集合名称等。
+// 参数 embedder: 用于生成向量的 Embedder 实例，在索引过程中需要使用它来向量化文档。
+// 返回: 初始化后的 Indexer 实例，如果后端不支持或初始化失败则返回错误。
 func NewIndexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
 	switch cfg.Provider {
 	case "qdrant":

@@ -12,13 +12,15 @@ import (
 	"llm-cache/internal/eino/config"
 )
 
-// MetricsHandler 指标回调处理器
+// MetricsHandler 实现基于内存的指标监控回调处理器。
+// 它收集组件调用的成功、失败次数以及执行耗时等指标。
 type MetricsHandler struct {
 	cfg     *config.MetricsCallbackConfig
 	metrics *MetricsCollector
 }
 
-// MetricsCollector 指标收集器
+// MetricsCollector 定义了指标数据的存储结构。
+// 包含全局和分组件的调用计数、延迟统计等信息。
 type MetricsCollector struct {
 	mu sync.RWMutex
 
@@ -35,7 +37,8 @@ type MetricsCollector struct {
 	ComponentCalls map[string]int64
 }
 
-// LatencyStats 延迟统计
+// LatencyStats 定义了单个组件的延迟统计信息。
+// 包含调用次数、总耗时、最小耗时和最大耗时。
 type LatencyStats struct {
 	Count   int64
 	TotalMs int64
@@ -43,7 +46,9 @@ type LatencyStats struct {
 	MaxMs   int64
 }
 
-// NewMetricsHandler 创建指标回调处理器
+// NewMetricsHandler 创建一个新的指标回调处理器。
+// 参数 cfg: 指标回调配置。
+// 返回: callbacks.Handler 接口实现。
 func NewMetricsHandler(cfg *config.MetricsCallbackConfig) callbacks.Handler {
 	return &MetricsHandler{
 		cfg: cfg,
@@ -54,7 +59,8 @@ func NewMetricsHandler(cfg *config.MetricsCallbackConfig) callbacks.Handler {
 	}
 }
 
-// OnStart 组件开始执行时调用
+// OnStart 在组件开始执行时被调用。
+// 记录调用次数，并设置开始时间以计算延迟。
 func (h *MetricsHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -72,7 +78,8 @@ func (h *MetricsHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, i
 	return ctx
 }
 
-// OnEnd 组件执行完成时调用
+// OnEnd 在组件执行完成时被调用。
+// 更新成功调用次数和延迟统计信息。
 func (h *MetricsHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -114,7 +121,8 @@ func (h *MetricsHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, out
 	return ctx
 }
 
-// OnError 组件执行出错时调用
+// OnError 在组件执行出错时被调用。
+// 更新失败调用次数。
 func (h *MetricsHandler) OnError(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -128,7 +136,8 @@ func (h *MetricsHandler) OnError(ctx context.Context, info *callbacks.RunInfo, e
 	return ctx
 }
 
-// OnStartWithStreamInput 流式输入开始时调用
+// OnStartWithStreamInput 在流式输入开始时被调用。
+// 记录调用次数，并设置开始时间。
 func (h *MetricsHandler) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -145,12 +154,14 @@ func (h *MetricsHandler) OnStartWithStreamInput(ctx context.Context, info *callb
 	return ctx
 }
 
-// OnEndWithStreamOutput 流式输出结束时调用
+// OnEndWithStreamOutput 在流式输出结束时被调用。
+// 调用 OnEnd 处理结束逻辑。
 func (h *MetricsHandler) OnEndWithStreamOutput(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
 	return h.OnEnd(ctx, info, nil)
 }
 
-// GetMetrics 获取当前指标
+// GetMetrics 获取当前收集的所有指标数据。
+// 返回一个包含总调用数、成功/失败数、平均延迟以及各组件详情的 Map。
 func (h *MetricsHandler) GetMetrics() map[string]interface{} {
 	h.metrics.mu.RLock()
 	defer h.metrics.mu.RUnlock()
@@ -184,7 +195,8 @@ func (h *MetricsHandler) GetMetrics() map[string]interface{} {
 	}
 }
 
-// Reset 重置指标
+// Reset 重置所有收集的指标数据。
+// 将计数器归零并清空统计信息。
 func (h *MetricsHandler) Reset() {
 	h.metrics.mu.Lock()
 	defer h.metrics.mu.Unlock()
@@ -198,5 +210,6 @@ func (h *MetricsHandler) Reset() {
 }
 
 const (
+	// metricsStartTimeKey 用于在上下文中存储指标统计开始时间。
 	metricsStartTimeKey contextKey = "metrics_start_time"
 )

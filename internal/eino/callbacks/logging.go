@@ -12,13 +12,17 @@ import (
 	"llm-cache/pkg/logger"
 )
 
-// LoggingHandler 日志回调处理器
+// LoggingHandler 实现基于日志的 Callback 处理器。
+// 它会在组件开始、结束或出错时记录详细的日志信息。
 type LoggingHandler struct {
 	logger logger.Logger
 	cfg    *config.LoggingCallbackConfig
 }
 
-// NewLoggingHandler 创建日志回调处理器
+// NewLoggingHandler 创建一个新的日志回调处理器。
+// 参数 log: 底层日志记录器。
+// 参数 cfg: 日志回调配置。
+// 返回: callbacks.Handler 接口实现。
 func NewLoggingHandler(log logger.Logger, cfg *config.LoggingCallbackConfig) callbacks.Handler {
 	return &LoggingHandler{
 		logger: log,
@@ -26,7 +30,8 @@ func NewLoggingHandler(log logger.Logger, cfg *config.LoggingCallbackConfig) cal
 	}
 }
 
-// OnStart 组件开始执行时调用
+// OnStart 在组件开始执行时被调用。
+// 记录组件名称、类型和开始时间，并将开始时间注入上下文以计算耗时。
 func (h *LoggingHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -44,7 +49,8 @@ func (h *LoggingHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, i
 	return ctx
 }
 
-// OnEnd 组件执行完成时调用
+// OnEnd 在组件执行完成时被调用。
+// 计算并记录组件的执行耗时。
 func (h *LoggingHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -64,7 +70,8 @@ func (h *LoggingHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, out
 	return ctx
 }
 
-// OnError 组件执行出错时调用
+// OnError 在组件执行出错时被调用。
+// 记录错误详情和执行耗时。
 func (h *LoggingHandler) OnError(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -85,7 +92,8 @@ func (h *LoggingHandler) OnError(ctx context.Context, info *callbacks.RunInfo, e
 	return ctx
 }
 
-// OnStartWithStreamInput 流式输入开始时调用
+// OnStartWithStreamInput 在流式输入开始时被调用。
+// 记录流式处理的开始时间和组件信息。
 func (h *LoggingHandler) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -102,7 +110,8 @@ func (h *LoggingHandler) OnStartWithStreamInput(ctx context.Context, info *callb
 	return ctx
 }
 
-// OnEndWithStreamOutput 流式输出结束时调用
+// OnEndWithStreamOutput 在流式输出结束时被调用。
+// 记录流式处理的结束时间和总耗时。
 func (h *LoggingHandler) OnEndWithStreamOutput(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -120,9 +129,10 @@ func (h *LoggingHandler) OnEndWithStreamOutput(ctx context.Context, info *callba
 	return ctx
 }
 
-// contextKey 上下文键类型
+// contextKey 定义了上下文键的类型，用于防止键名冲突。
 type contextKey string
 
 const (
+	// startTimeKey 用于在上下文中存储组件开始执行的时间。
 	startTimeKey contextKey = "callback_start_time"
 )

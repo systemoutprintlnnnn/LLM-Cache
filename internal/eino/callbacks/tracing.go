@@ -14,14 +14,16 @@ import (
 	"llm-cache/pkg/logger"
 )
 
-// TracingHandler 链路追踪回调处理器
+// TracingHandler 实现链路追踪的回调处理器。
+// 它生成和传播 TraceID/SpanID，并记录每个组件的执行跨度（Span）。
 type TracingHandler struct {
 	cfg    *config.TracingCallbackConfig
 	logger logger.Logger
 	spanID uint64
 }
 
-// SpanInfo 跨度信息
+// SpanInfo 定义了追踪跨度的详细信息。
+// 包含 TraceID, SpanID, 父 SpanID, 组件信息以及执行时间等。
 type SpanInfo struct {
 	TraceID   string
 	SpanID    string
@@ -36,7 +38,10 @@ type SpanInfo struct {
 	Tags      map[string]string
 }
 
-// NewTracingHandler 创建链路追踪回调处理器
+// NewTracingHandler 创建一个新的链路追踪处理器。
+// 参数 cfg: 追踪配置。
+// 参数 log: 日志记录器（用于输出追踪信息）。
+// 返回: callbacks.Handler 接口实现。
 func NewTracingHandler(cfg *config.TracingCallbackConfig, log logger.Logger) callbacks.Handler {
 	return &TracingHandler{
 		cfg:    cfg,
@@ -44,7 +49,8 @@ func NewTracingHandler(cfg *config.TracingCallbackConfig, log logger.Logger) cal
 	}
 }
 
-// OnStart 组件开始执行时调用
+// OnStart 在组件开始执行时被调用。
+// 创建新的 Span，生成或继承 TraceID，并将其注入上下文。
 func (h *TracingHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, input callbacks.CallbackInput) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -87,7 +93,8 @@ func (h *TracingHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, i
 	return ctx
 }
 
-// OnEnd 组件执行完成时调用
+// OnEnd 在组件执行完成时被调用。
+// 结束当前 Span，计算耗时并记录状态。
 func (h *TracingHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -112,7 +119,8 @@ func (h *TracingHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo, out
 	return ctx
 }
 
-// OnError 组件执行出错时调用
+// OnError 在组件执行出错时被调用。
+// 记录错误信息到当前 Span 并标记为失败。
 func (h *TracingHandler) OnError(ctx context.Context, info *callbacks.RunInfo, err error) context.Context {
 	if !h.cfg.Enabled {
 		return ctx
@@ -138,28 +146,32 @@ func (h *TracingHandler) OnError(ctx context.Context, info *callbacks.RunInfo, e
 	return ctx
 }
 
-// OnStartWithStreamInput 流式输入开始时调用
+// OnStartWithStreamInput 在流式输入开始时被调用。
+// 调用 OnStart 处理开始逻辑。
 func (h *TracingHandler) OnStartWithStreamInput(ctx context.Context, info *callbacks.RunInfo, input *schema.StreamReader[callbacks.CallbackInput]) context.Context {
 	return h.OnStart(ctx, info, nil)
 }
 
-// OnEndWithStreamOutput 流式输出结束时调用
+// OnEndWithStreamOutput 在流式输出结束时被调用。
+// 调用 OnEnd 处理结束逻辑。
 func (h *TracingHandler) OnEndWithStreamOutput(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
 	return h.OnEnd(ctx, info, nil)
 }
 
-// generateSpanID 生成 Span ID
+// generateSpanID 生成唯一的 Span ID。
+// 使用原子计数器和 UUID 组合生成。
 func (h *TracingHandler) generateSpanID() string {
 	id := atomic.AddUint64(&h.spanID, 1)
 	return uuid.NewSHA1(uuid.NameSpaceDNS, []byte(time.Now().String())).String()[:16] + "-" + string(rune(id))
 }
 
-// generateTraceID 生成 Trace ID
+// generateTraceID 生成全局唯一的 Trace ID。
+// 使用 UUID v4 生成。
 func generateTraceID() string {
 	return uuid.New().String()
 }
 
-// getTraceID 从上下文获取 Trace ID
+// getTraceID 从上下文中获取 Trace ID。
 func getTraceID(ctx context.Context) string {
 	if traceID, ok := ctx.Value(traceIDKey).(string); ok {
 		return traceID
@@ -167,7 +179,7 @@ func getTraceID(ctx context.Context) string {
 	return ""
 }
 
-// getSpanID 从上下文获取 Span ID
+// getSpanID 从上下文中获取 Span ID。
 func getSpanID(ctx context.Context) string {
 	if spanID, ok := ctx.Value(spanIDKey).(string); ok {
 		return spanID
@@ -175,7 +187,7 @@ func getSpanID(ctx context.Context) string {
 	return ""
 }
 
-// getCurrentSpan 从上下文获取当前跨度
+// getCurrentSpan 从上下文中获取当前活动的 SpanInfo 对象。
 func getCurrentSpan(ctx context.Context) *SpanInfo {
 	if span, ok := ctx.Value(currentSpanKey).(*SpanInfo); ok {
 		return span
@@ -184,17 +196,22 @@ func getCurrentSpan(ctx context.Context) *SpanInfo {
 }
 
 const (
-	traceIDKey     contextKey = "trace_id"
-	spanIDKey      contextKey = "span_id"
+	// traceIDKey 用于在上下文中存储 Trace ID。
+	traceIDKey contextKey = "trace_id"
+	// spanIDKey 用于在上下文中存储 Span ID。
+	spanIDKey contextKey = "span_id"
+	// currentSpanKey 用于在上下文中存储当前 SpanInfo 对象。
 	currentSpanKey contextKey = "current_span"
 )
 
-// WithTraceID 设置 Trace ID 到上下文
+// WithTraceID 将指定的 TraceID 注入到上下文中。
+// 返回: 包含 TraceID 的新上下文。
 func WithTraceID(ctx context.Context, traceID string) context.Context {
 	return context.WithValue(ctx, traceIDKey, traceID)
 }
 
-// ExtractTraceID 从上下文提取 Trace ID
+// ExtractTraceID 从上下文中提取当前 TraceID。
+// 如果不存在则返回空字符串。
 func ExtractTraceID(ctx context.Context) string {
 	return getTraceID(ctx)
 }

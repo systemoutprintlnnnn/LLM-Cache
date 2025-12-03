@@ -14,8 +14,8 @@ import (
 	"llm-cache/pkg/status"
 )
 
-// CacheHandler 缓存处理器
-// 使用 Eino compose.Runnable 类型替代自定义 Service 接口
+// CacheHandler 缓存处理器，负责处理 HTTP 缓存请求。
+// 它通过调用 Eino 编排的 Graph (Runner) 来执行具体的业务逻辑。
 type CacheHandler struct {
 	queryRunner   compose.Runnable[*flows.CacheQueryInput, *flows.CacheQueryOutput]
 	storeRunner   compose.Runnable[*flows.CacheStoreInput, *flows.CacheStoreOutput]
@@ -23,7 +23,8 @@ type CacheHandler struct {
 	logger        logger.Logger
 }
 
-// NewCacheHandler 创建缓存处理器
+// NewCacheHandler 创建一个新的 CacheHandler 实例。
+// 它接收查询、存储和删除服务的执行组件，以及日志记录器。
 func NewCacheHandler(
 	queryRunner compose.Runnable[*flows.CacheQueryInput, *flows.CacheQueryOutput],
 	storeRunner compose.Runnable[*flows.CacheStoreInput, *flows.CacheStoreOutput],
@@ -38,7 +39,8 @@ func NewCacheHandler(
 	}
 }
 
-// APIResponse 统一的API响应格式
+// APIResponse 定义统一的 API 响应结构。
+// 包含请求是否成功、状态码、提示消息、数据载荷以及请求追踪信息。
 type APIResponse struct {
 	Success   bool        `json:"success"`
 	Code      int         `json:"code"`
@@ -48,14 +50,16 @@ type APIResponse struct {
 	Timestamp int64       `json:"timestamp"`
 }
 
-// ErrorDetail 错误详情
+// ErrorDetail 定义错误详情结构。
+// 用于在 API 响应中返回具体的错误字段、消息和代码。
 type ErrorDetail struct {
 	Field   string `json:"field,omitempty"`
 	Message string `json:"message"`
 	Code    string `json:"code,omitempty"`
 }
 
-// QueryRequest 查询请求
+// QueryRequest 定义缓存查询请求的参数结构。
+// 包含查询问题、用户类型以及可选的搜索参数（TopK、相似度阈值）。
 type QueryRequest struct {
 	Question            string  `json:"question" binding:"required"`
 	UserType            string  `json:"user_type" binding:"required"`
@@ -63,7 +67,8 @@ type QueryRequest struct {
 	SimilarityThreshold float64 `json:"similarity_threshold,omitempty"`
 }
 
-// StoreRequest 存储请求
+// StoreRequest 定义缓存存储请求的参数结构。
+// 包含问题、答案、用户类型以及元数据，支持强制写入选项。
 type StoreRequest struct {
 	Question   string         `json:"question" binding:"required"`
 	Answer     string         `json:"answer" binding:"required"`
@@ -72,15 +77,17 @@ type StoreRequest struct {
 	ForceWrite bool           `json:"force_write,omitempty"`
 }
 
-// DeleteRequest 删除请求
+// DeleteRequest 定义缓存删除请求的参数结构。
+// 支持批量删除，需要指定缓存 ID 列表和用户类型。
 type DeleteRequest struct {
 	CacheIDs []string `json:"cache_ids" binding:"required"`
 	UserType string   `json:"user_type" binding:"required"`
 	Force    bool     `json:"force,omitempty"`
 }
 
-// QueryCache 查询缓存
-// POST /v1/cache/search
+// QueryCache 处理缓存查询请求 (POST /v1/cache/search)。
+// 解析请求参数，调用 queryRunner 执行语义搜索，并返回匹配结果。
+// 参数 c: Gin 上下文对象，用于处理 HTTP 请求和响应。
 func (h *CacheHandler) QueryCache(c *gin.Context) {
 	ctx := c.Request.Context()
 	requestID := middleware.GetRequestID(c)
@@ -137,8 +144,9 @@ func (h *CacheHandler) QueryCache(c *gin.Context) {
 	h.respondWithSuccess(c, result, "缓存查询成功")
 }
 
-// StoreCache 存储缓存
-// POST /v1/cache/store
+// StoreCache 处理缓存存储请求 (POST /v1/cache/store)。
+// 验证输入数据，调用 storeRunner 执行质量检查、向量化和存储操作。
+// 参数 c: Gin 上下文对象，用于处理 HTTP 请求和响应。
 func (h *CacheHandler) StoreCache(c *gin.Context) {
 	ctx := c.Request.Context()
 	requestID := middleware.GetRequestID(c)
@@ -197,8 +205,9 @@ func (h *CacheHandler) StoreCache(c *gin.Context) {
 	h.respondWithSuccess(c, result, "缓存存储成功")
 }
 
-// DeleteCache 删除单个缓存
-// DELETE /v1/cache/:cache_id
+// DeleteCache 处理单个缓存删除请求 (DELETE /v1/cache/:cache_id)。
+// 根据缓存 ID 和用户类型删除指定的缓存项。
+// 参数 c: Gin 上下文对象，用于处理 HTTP 请求和响应。
 func (h *CacheHandler) DeleteCache(c *gin.Context) {
 	ctx := c.Request.Context()
 	requestID := middleware.GetRequestID(c)
@@ -252,8 +261,9 @@ func (h *CacheHandler) DeleteCache(c *gin.Context) {
 	h.respondWithSuccess(c, result, "缓存删除成功")
 }
 
-// BatchDeleteCache 批量删除缓存
-// DELETE /v1/cache/batch
+// BatchDeleteCache 处理批量缓存删除请求 (DELETE /v1/cache/batch)。
+// 根据提供的 ID 列表批量删除缓存项。
+// 参数 c: Gin 上下文对象，用于处理 HTTP 请求和响应。
 func (h *CacheHandler) BatchDeleteCache(c *gin.Context) {
 	ctx := c.Request.Context()
 	requestID := middleware.GetRequestID(c)
@@ -315,8 +325,9 @@ func (h *CacheHandler) BatchDeleteCache(c *gin.Context) {
 	h.respondWithSuccess(c, result, "批量缓存删除成功")
 }
 
-// GetCacheByID 根据ID获取缓存项
-// GET /v1/cache/:cache_id
+// GetCacheByID 处理根据 ID 获取缓存项的请求 (GET /v1/cache/:cache_id)。
+// 返回指定 ID 的缓存详细信息。
+// 参数 c: Gin 上下文对象，用于处理 HTTP 请求和响应。
 func (h *CacheHandler) GetCacheByID(c *gin.Context) {
 	ctx := c.Request.Context()
 	requestID := middleware.GetRequestID(c)
@@ -368,8 +379,9 @@ func (h *CacheHandler) GetCacheByID(c *gin.Context) {
 	h.respondWithSuccess(c, cacheItem, "缓存查询成功")
 }
 
-// GetCacheStatistics 获取缓存统计信息
-// GET /v1/cache/statistics
+// GetCacheStatistics 处理获取缓存统计信息的请求 (GET /v1/cache/statistics)。
+// 返回当前的系统运行状态和统计数据。
+// 参数 c: Gin 上下文对象，用于处理 HTTP 请求和响应。
 func (h *CacheHandler) GetCacheStatistics(c *gin.Context) {
 	ctx := c.Request.Context()
 	requestID := middleware.GetRequestID(c)
@@ -387,8 +399,9 @@ func (h *CacheHandler) GetCacheStatistics(c *gin.Context) {
 	h.respondWithSuccess(c, statistics, "缓存统计查询成功")
 }
 
-// HealthCheck 健康检查
-// GET /v1/cache/health
+// HealthCheck 处理健康检查请求 (GET /v1/cache/health)。
+// 返回服务的健康状态。
+// 参数 c: Gin 上下文对象，用于处理 HTTP 请求和响应。
 func (h *CacheHandler) HealthCheck(c *gin.Context) {
 	ctx := c.Request.Context()
 	requestID := middleware.GetRequestID(c)

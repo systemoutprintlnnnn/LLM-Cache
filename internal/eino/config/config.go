@@ -3,7 +3,8 @@ package config
 
 import "time"
 
-// EinoConfig Eino 框架总配置
+// EinoConfig Eino 框架的总配置结构。
+// 包含了 Embedder、Retriever、Indexer 等组件的配置，以及查询、存储、质量检查和回调系统的配置。
 type EinoConfig struct {
 	Embedder  EmbedderConfig  `yaml:"embedder"`
 	Retriever RetrieverConfig `yaml:"retriever"`
@@ -14,7 +15,8 @@ type EinoConfig struct {
 	Callbacks CallbacksConfig `yaml:"callbacks"`
 }
 
-// EmbedderConfig Embedder 配置
+// EmbedderConfig 定义文本嵌入（Embedding）服务的配置。
+// 支持多种提供商（OpenAI, ARK, Ollama 等）及特定的认证和模型参数。
 type EmbedderConfig struct {
 	Provider   string `yaml:"provider"` // openai, ark, ollama, dashscope, qianfan, tencentcloud
 	APIKey     string `yaml:"api_key"`
@@ -37,7 +39,8 @@ type EmbedderConfig struct {
 	SecretID string `yaml:"secret_id"`
 }
 
-// RetrieverConfig Retriever 配置
+// RetrieverConfig 定义检索器（Retriever）的配置。
+// 负责从向量数据库中检索相似的文本片段。
 type RetrieverConfig struct {
 	Provider       string  `yaml:"provider"` // qdrant, milvus, redis, es8, vikingdb
 	Collection     string  `yaml:"collection"`
@@ -57,7 +60,7 @@ type RetrieverConfig struct {
 	ES8 ES8RetrieverConfig `yaml:"es8"`
 }
 
-// QdrantRetrieverConfig Qdrant Retriever 配置
+// QdrantRetrieverConfig 定义 Qdrant 检索器的专用配置。
 type QdrantRetrieverConfig struct {
 	Host       string `yaml:"host"`
 	Port       int    `yaml:"port"`
@@ -66,7 +69,7 @@ type QdrantRetrieverConfig struct {
 	VectorName string `yaml:"vector_name"`
 }
 
-// MilvusRetrieverConfig Milvus Retriever 配置
+// MilvusRetrieverConfig 定义 Milvus 检索器的专用配置。
 type MilvusRetrieverConfig struct {
 	Host         string   `yaml:"host"`
 	Port         int      `yaml:"port"`
@@ -77,7 +80,7 @@ type MilvusRetrieverConfig struct {
 	MetricType   string   `yaml:"metric_type"`
 }
 
-// RedisRetrieverConfig Redis Retriever 配置
+// RedisRetrieverConfig 定义 Redis 检索器的专用配置。
 type RedisRetrieverConfig struct {
 	Addr         string   `yaml:"addr"`
 	Password     string   `yaml:"password"`
@@ -87,7 +90,7 @@ type RedisRetrieverConfig struct {
 	ReturnFields []string `yaml:"return_fields"`
 }
 
-// ES8RetrieverConfig Elasticsearch Retriever 配置
+// ES8RetrieverConfig 定义 Elasticsearch 8 检索器的专用配置。
 type ES8RetrieverConfig struct {
 	Addresses   []string `yaml:"addresses"`
 	Username    string   `yaml:"username"`
@@ -97,7 +100,8 @@ type ES8RetrieverConfig struct {
 	SearchMode  string   `yaml:"search_mode"` // knn, hybrid
 }
 
-// IndexerConfig Indexer 配置
+// IndexerConfig 定义索引器（Indexer）的配置。
+// 负责将文本向量化并存储到向量数据库中。
 type IndexerConfig struct {
 	Provider   string `yaml:"provider"`
 	Collection string `yaml:"collection"`
@@ -116,7 +120,7 @@ type IndexerConfig struct {
 	ES8 ES8IndexerConfig `yaml:"es8"`
 }
 
-// QdrantIndexerConfig Qdrant Indexer 配置
+// QdrantIndexerConfig 定义 Qdrant 索引器的专用配置。
 type QdrantIndexerConfig struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -125,7 +129,7 @@ type QdrantIndexerConfig struct {
 	Distance string `yaml:"distance"` // Cosine, Euclid, Dot
 }
 
-// MilvusIndexerConfig Milvus Indexer 配置
+// MilvusIndexerConfig 定义 Milvus 索引器的专用配置。
 type MilvusIndexerConfig struct {
 	Host        string `yaml:"host"`
 	Port        int    `yaml:"port"`
@@ -134,7 +138,7 @@ type MilvusIndexerConfig struct {
 	VectorField string `yaml:"vector_field"`
 }
 
-// RedisIndexerConfig Redis Indexer 配置
+// RedisIndexerConfig 定义 Redis 索引器的专用配置。
 type RedisIndexerConfig struct {
 	Addr        string `yaml:"addr"`
 	Password    string `yaml:"password"`
@@ -144,7 +148,7 @@ type RedisIndexerConfig struct {
 	VectorField string `yaml:"vector_field"`
 }
 
-// ES8IndexerConfig Elasticsearch Indexer 配置
+// ES8IndexerConfig 定义 Elasticsearch 8 索引器的专用配置。
 type ES8IndexerConfig struct {
 	Addresses   []string `yaml:"addresses"`
 	Username    string   `yaml:"username"`
@@ -153,7 +157,8 @@ type ES8IndexerConfig struct {
 	VectorField string   `yaml:"vector_field"`
 }
 
-// QueryConfig 查询 Graph 配置
+// QueryConfig 定义查询流程（Query Graph）的配置。
+// 包含预处理、后处理开关，结果选择策略以及超时设置。
 type QueryConfig struct {
 	// 节点开关
 	PreprocessEnabled  bool `yaml:"preprocess_enabled"`
@@ -168,7 +173,8 @@ type QueryConfig struct {
 	RetrieveTimeout  int `yaml:"retrieve_timeout"`
 }
 
-// StoreConfig 存储 Graph 配置
+// StoreConfig 定义存储流程（Store Graph）的配置。
+// 包含质量检查开关、文本长度限制和相似度阈值。
 type StoreConfig struct {
 	// 质量检查配置
 	QualityCheckEnabled bool    `yaml:"quality_check_enabled"`
@@ -177,7 +183,8 @@ type StoreConfig struct {
 	ScoreThreshold      float64 `yaml:"score_threshold"`
 }
 
-// QualityConfig 质量检查配置
+// QualityConfig 定义质量检查组件的详细配置。
+// 包含文本长度、语义相关性、综合分数阈值以及并行处理参数。
 type QualityConfig struct {
 	// 是否启用质量检查
 	Enabled bool `yaml:"enabled"`
@@ -202,7 +209,8 @@ type QualityConfig struct {
 	BlacklistKeywords []string `yaml:"blacklist_keywords"`
 }
 
-// CallbacksConfig Callback 配置
+// CallbacksConfig 定义 Eino 框架的回调系统配置。
+// 支持日志、监控指标、链路追踪以及 Langfuse 等第三方平台集成。
 type CallbacksConfig struct {
 	Logging  LoggingCallbackConfig  `yaml:"logging"`
 	Metrics  MetricsCallbackConfig  `yaml:"metrics"`
@@ -212,25 +220,25 @@ type CallbacksConfig struct {
 	Cozeloop CozeloopCallbackConfig `yaml:"cozeloop"`
 }
 
-// LoggingCallbackConfig 日志回调配置
+// LoggingCallbackConfig 定义日志回调的配置。
 type LoggingCallbackConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Level   string `yaml:"level"`
 }
 
-// MetricsCallbackConfig 指标回调配置
+// MetricsCallbackConfig 定义指标监控回调的配置。
 type MetricsCallbackConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Endpoint string `yaml:"endpoint"`
 }
 
-// TracingCallbackConfig 链路追踪回调配置
+// TracingCallbackConfig 定义链路追踪回调的配置。
 type TracingCallbackConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Endpoint string `yaml:"endpoint"`
 }
 
-// LangfuseCallbackConfig Langfuse 回调配置
+// LangfuseCallbackConfig 定义 Langfuse 平台的集成配置。
 type LangfuseCallbackConfig struct {
 	Enabled       bool   `yaml:"enabled"`
 	PublicKey     string `yaml:"public_key"`
@@ -240,7 +248,7 @@ type LangfuseCallbackConfig struct {
 	BatchSize     int    `yaml:"batch_size"`
 }
 
-// APMPlusCallbackConfig APMPlus 回调配置
+// APMPlusCallbackConfig 定义 APMPlus 平台的集成配置。
 type APMPlusCallbackConfig struct {
 	Enabled     bool   `yaml:"enabled"`
 	AppKey      string `yaml:"app_key"`
@@ -249,14 +257,15 @@ type APMPlusCallbackConfig struct {
 	Environment string `yaml:"environment"`
 }
 
-// CozeloopCallbackConfig Cozeloop 回调配置
+// CozeloopCallbackConfig 定义 Cozeloop 平台的集成配置。
 type CozeloopCallbackConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	APIKey   string `yaml:"api_key"`
 	Endpoint string `yaml:"endpoint"`
 }
 
-// DefaultEinoConfig 返回默认的 Eino 配置
+// DefaultEinoConfig 创建并返回一个包含默认值的 EinoConfig 对象。
+// 默认配置使用 OpenAI (Embedder) 和 Qdrant (Retriever/Indexer)，并开启了常用的功能开关。
 func DefaultEinoConfig() *EinoConfig {
 	return &EinoConfig{
 		Embedder: EmbedderConfig{

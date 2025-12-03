@@ -15,7 +15,8 @@ import (
 	"llm-cache/internal/eino/nodes"
 )
 
-// CacheQueryInput 查询输入
+// CacheQueryInput 定义查询请求的输入参数。
+// 包含查询文本、用户类型、TopK 和相似度阈值。
 type CacheQueryInput struct {
 	Query          string  `json:"query"`
 	UserType       string  `json:"user_type"`
@@ -23,7 +24,8 @@ type CacheQueryInput struct {
 	ScoreThreshold float64 `json:"score_threshold,omitempty"`
 }
 
-// CacheQueryOutput 查询输出
+// CacheQueryOutput 定义查询请求的输出结果。
+// 包含命中状态、问答对、相似度分数、缓存 ID 以及元数据。
 type CacheQueryOutput struct {
 	Hit      bool           `json:"hit"`
 	Question string         `json:"question,omitempty"`
@@ -33,7 +35,8 @@ type CacheQueryOutput struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// CacheQueryGraph 缓存查询 Graph
+// CacheQueryGraph 定义缓存查询的 Eino Graph 流程。
+// 包含预处理、向量检索、结果选择和后处理等节点。
 type CacheQueryGraph struct {
 	embedder         embedding.Embedder
 	retriever        retriever.Retriever
@@ -41,7 +44,12 @@ type CacheQueryGraph struct {
 	callbackHandlers []callbacks.Handler
 }
 
-// NewCacheQueryGraph 创建缓存查询 Graph
+// NewCacheQueryGraph 创建一个新的缓存查询 Graph。
+// 参数 embedder: 用于生成查询向量的 Embedder。
+// 参数 ret: 用于执行向量检索的 Retriever。
+// 参数 cfg: 查询流程配置。
+// 参数 callbackHandlers: 可选的回调处理器列表，用于监控和追踪。
+// 返回: 初始化后的 CacheQueryGraph 指针。
 func NewCacheQueryGraph(
 	embedder embedding.Embedder,
 	ret retriever.Retriever,
@@ -56,7 +64,10 @@ func NewCacheQueryGraph(
 	}
 }
 
-// Compile 编译 Graph 为 Runnable
+// Compile 将 Graph 编译为可执行的 Runnable 实例。
+// 构建节点（预处理、检索、选择、后处理）和边，并应用配置。
+// 参数 ctx: 上下文对象。
+// 返回: 可执行的 Runnable 对象或错误。
 func (g *CacheQueryGraph) Compile(ctx context.Context) (compose.Runnable[*CacheQueryInput, *CacheQueryOutput], error) {
 	graph := compose.NewGraph[*CacheQueryInput, *CacheQueryOutput]()
 
@@ -145,7 +156,11 @@ func (g *CacheQueryGraph) Compile(ctx context.Context) (compose.Runnable[*CacheQ
 	return runnable, nil
 }
 
-// Run 执行查询
+// Run 执行一次完整的缓存查询流程。
+// 编译并运行 Graph。
+// 参数 ctx: 上下文对象。
+// 参数 input: 查询输入。
+// 返回: 查询结果或错误。
 func (g *CacheQueryGraph) Run(ctx context.Context, input *CacheQueryInput) (*CacheQueryOutput, error) {
 	runnable, err := g.Compile(ctx)
 	if err != nil {

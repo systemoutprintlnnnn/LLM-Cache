@@ -13,7 +13,12 @@ import (
 	"llm-cache/internal/eino/config"
 )
 
-// NewRetriever 根据配置创建 Eino Retriever 实例
+// NewRetriever 根据配置创建并返回一个 Eino Retriever 实例。
+// 支持 Qdrant, Milvus, Redis, Elasticsearch, VikingDB 等多种后端。
+// 参数 ctx: 上下文对象。
+// 参数 cfg: Retriever 配置，包含后端类型、连接信息、TopK 和阈值等。
+// 参数 embedder: 用于生成查询向量的 Embedder 实例，在检索过程中需要使用它来向量化查询文本。
+// 返回: 初始化后的 Retriever 实例，如果后端不支持或初始化失败则返回错误。
 func NewRetriever(ctx context.Context, cfg *config.RetrieverConfig, embedder embedding.Embedder) (retriever.Retriever, error) {
 	switch cfg.Provider {
 	case "qdrant":
@@ -176,7 +181,10 @@ func newVikingDBRetriever(ctx context.Context, cfg *config.RetrieverConfig, embe
 	return nil, fmt.Errorf("VikingDB retriever is not enabled. Please add github.com/cloudwego/eino-ext/components/retriever/vikingdb dependency")
 }
 
-// GetQdrantClient 获取 Qdrant 客户端（用于删除等操作）
+// GetQdrantClient 创建并返回一个 Qdrant 客户端实例。
+// 用于直接执行 Qdrant 操作（如删除缓存项），绕过 Eino Retriever 接口。
+// 参数 cfg: Retriever 配置（包含 Qdrant 连接信息）。
+// 返回: Qdrant 客户端或错误。
 func GetQdrantClient(cfg *config.RetrieverConfig) (*qdrantClient.Client, error) {
 	clientCfg := &qdrantClient.Config{
 		Host: cfg.Qdrant.Host,

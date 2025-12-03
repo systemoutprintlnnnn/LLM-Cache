@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Server HTTP服务器结构体
-// 负责整个服务器的生命周期管理，包括初始化、启动、运行和优雅关闭
+// Server 定义了 HTTP 服务器的核心结构。
+// 它管理服务器的生命周期，包括配置、Gin 引擎、路由处理、缓存处理器以及优雅关闭等。
 type Server struct {
 	config       *configs.ServerConfig  // 服务器配置
 	httpServer   *http.Server           // HTTP服务器实例
@@ -21,10 +21,12 @@ type Server struct {
 	logger       logger.Logger          // 日志器
 }
 
-// NewServer 创建新的HTTP服务器实例
-// config: 服务器配置
-// cacheHandler: 缓存处理器
-// log: 日志器
+// NewServer 创建并初始化一个新的 HTTP 服务器实例。
+// 根据配置设置 Gin 模式（Debug/Release），并注入缓存处理器和日志组件。
+// 参数 config: 服务器配置。
+// 参数 cacheHandler: 核心业务处理器。
+// 参数 log: 日志记录器。
+// 返回: 初始化后的 Server 指针。
 func NewServer(config *configs.ServerConfig, cacheHandler *handlers.CacheHandler, log logger.Logger) *Server {
 	// 根据配置设置Gin模式
 	if config.Host == "0.0.0.0" || config.Host == "" {
@@ -44,10 +46,10 @@ func NewServer(config *configs.ServerConfig, cacheHandler *handlers.CacheHandler
 	}
 }
 
-// Start 启动HTTP服务器（非阻塞）
-// ctx: 上下文，用于日志记录
-// errChan: 错误通道，用于传递服务器运行时错误（如端口被占用）
-// 注意：调用者应该监听 errChan 以处理服务器启动后的运行时错误
+// Start 启动 HTTP 服务器并开始监听请求（异步执行）。
+// 它会在后台 goroutine 中运行 ListenAndServe。
+// 参数 ctx: 上下文对象。
+// 参数 errChan: 用于接收服务器运行时错误的通道。调用者应监听此通道。
 func (s *Server) Start(ctx context.Context, errChan chan<- error) {
 	// 设置路由
 	SetupRoutes(s.engine, s.cacheHandler, s.logger)
@@ -81,8 +83,10 @@ func (s *Server) Start(ctx context.Context, errChan chan<- error) {
 	}()
 }
 
-// Shutdown 优雅关闭服务器
-// ctx: 上下文，用于控制关闭过程的超时
+// Shutdown 执行服务器的优雅关闭流程。
+// 它会等待当前正在处理的请求完成，或者直到上下文超时。
+// 参数 ctx: 控制关闭流程超时的上下文。
+// 返回: 关闭过程中的错误（如果有）。
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.InfoContext(ctx, "开始执行HTTP服务器优雅关闭")
 

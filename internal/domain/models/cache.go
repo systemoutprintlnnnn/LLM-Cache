@@ -4,7 +4,8 @@ import (
 	"time"
 )
 
-// CacheItem 缓存项，代表一个完整的问答对缓存记录
+// CacheItem 定义了语义缓存中的核心数据单元。
+// 它包含原始问题、生成的答案、用户类型、向量表示以及相关的元数据和统计信息。
 type CacheItem struct {
 	// ID 缓存项的唯一标识符
 	ID string `json:"id" validate:"required"`
@@ -34,7 +35,8 @@ type CacheItem struct {
 	UpdateTime time.Time `json:"update_time"`
 }
 
-// CacheMetadata 缓存元数据
+// CacheMetadata 定义了缓存项的元数据信息。
+// 包含数据来源、质量评估分数和版本号等附加信息。
 type CacheMetadata struct {
 	// Source 数据来源标识
 	Source string `json:"source,omitempty"`
@@ -46,7 +48,8 @@ type CacheMetadata struct {
 	Version int `json:"version,omitempty"`
 }
 
-// CacheStatistics 缓存统计信息
+// CacheStatistics 定义了缓存项的使用统计信息。
+// 包含命中次数、点赞次数和最后命中时间，用于缓存淘汰和热点分析。
 type CacheStatistics struct {
 	// HitCount 命中次数
 	HitCount int64 `json:"hit_count"`
@@ -58,7 +61,8 @@ type CacheStatistics struct {
 	LastHitTime *time.Time `json:"last_hit_time,omitempty"`
 }
 
-// CacheQuery 缓存查询请求
+// CacheQuery 定义了缓存查询请求的参数结构。
+// 包含查询问题、用户类型以及可选的搜索配置（如相似度阈值、返回数量）。
 type CacheQuery struct {
 	// Question 查询问题
 	Question string `json:"question" validate:"required,min=1"`
@@ -76,7 +80,8 @@ type CacheQuery struct {
 	Filters map[string]interface{} `json:"filters,omitempty"`
 }
 
-// CacheResult 缓存查询结果
+// CacheResult 定义了缓存查询的返回结果。
+// 包含是否命中、匹配的答案、相似度分数以及相关的元数据和统计信息。
 type CacheResult struct {
 	// Found 是否找到匹配的缓存
 	Found bool `json:"found"`
@@ -103,7 +108,8 @@ type CacheResult struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// CacheWriteRequest 缓存写入请求
+// CacheWriteRequest 定义了写入缓存的请求参数。
+// 包含问题、答案、用户类型以及元数据，支持强制写入选项。
 type CacheWriteRequest struct {
 	// Question 问题文本
 	Question string `json:"question" validate:"required,min=1,max=1000"`
@@ -121,7 +127,8 @@ type CacheWriteRequest struct {
 	ForceWrite bool `json:"force_write,omitempty"`
 }
 
-// CacheWriteResult 缓存写入结果
+// CacheWriteResult 定义了写入缓存的操作结果。
+// 包含操作是否成功、生成的缓存 ID、结果消息以及质量评估分数。
 type CacheWriteResult struct {
 	// Success 是否写入成功
 	Success bool `json:"success"`
@@ -136,7 +143,8 @@ type CacheWriteResult struct {
 	QualityScore float64 `json:"quality_score,omitempty" validate:"omitempty,min=-1.0,max=1.0"`
 }
 
-// CacheDeleteRequest 缓存删除请求
+// CacheDeleteRequest 定义了删除缓存的请求参数。
+// 支持批量删除，需要提供 ID 列表和用户类型。
 type CacheDeleteRequest struct {
 	// CacheIDs 要删除的缓存项ID列表
 	CacheIDs []string `json:"cache_ids" validate:"required,min=1"`
@@ -148,7 +156,8 @@ type CacheDeleteRequest struct {
 	Force bool `json:"force,omitempty"`
 }
 
-// CacheDeleteResult 缓存删除结果
+// CacheDeleteResult 定义了删除缓存的操作结果。
+// 包含是否成功、实际删除的数量以及失败的 ID 列表。
 type CacheDeleteResult struct {
 	// Success 是否删除成功
 	Success bool `json:"success"`

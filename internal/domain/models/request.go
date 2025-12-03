@@ -1,6 +1,7 @@
 package models
 
-// PreprocessedRequest 预处理后的请求
+// PreprocessedRequest 定义了经过预处理后的查询请求结构。
+// 包含原始请求、清洗后的问题文本以及处理过程的元数据。
 type PreprocessedRequest struct {
 	// Original 原始请求
 	Original *CacheQuery `json:"original,omitempty"`
@@ -18,7 +19,8 @@ type PreprocessedRequest struct {
 	Error string `json:"error,omitempty"`
 }
 
-// VectorProcessingRequest 向量处理请求
+// VectorProcessingRequest 定义了向量化处理请求的参数。
+// 包含待向量化的文本、指定使用的模型名称以及是否进行归一化处理。
 type VectorProcessingRequest struct {
 	// Text 待向量化的文本
 	Text string `json:"text" validate:"required"`
@@ -30,7 +32,8 @@ type VectorProcessingRequest struct {
 	Normalize bool `json:"normalize,omitempty"`
 }
 
-// VectorProcessingResult 向量处理结果
+// VectorProcessingResult 定义了向量化处理的结果。
+// 包含生成的向量对象、处理耗时、Token 消耗统计以及使用的模型信息。
 type VectorProcessingResult struct {
 	// Vector 生成的向量
 	Vector *Vector `json:"vector,omitempty"`
@@ -51,7 +54,8 @@ type VectorProcessingResult struct {
 	Error string `json:"error,omitempty"`
 }
 
-// QualityAssessmentRequest 质量评估请求
+// QualityAssessmentRequest 定义了回答质量评估的请求参数。
+// 包含原始问题和 LLM 生成的答案文本。
 type QualityAssessmentRequest struct {
 	// Question 问题文本
 	Question string `json:"question" validate:"required"`
@@ -60,7 +64,8 @@ type QualityAssessmentRequest struct {
 	Answer string `json:"answer" validate:"required"`
 }
 
-// QualityAssessmentResult 质量评估结果
+// QualityAssessmentResult 定义了回答质量评估的结果。
+// 包含是否通过评估、质量评分、评估阈值以及耗时信息。
 type QualityAssessmentResult struct {
 	// Passed 是否通过评估
 	Passed bool `json:"passed"`

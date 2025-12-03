@@ -6,7 +6,8 @@ import (
 	"time"
 )
 
-// Vector 向量数据结构
+// Vector 定义了高维向量的数据结构。
+// 包含向量 ID、数值数组、维度信息以及相关的元数据（如创建时间、模型名称）。
 type Vector struct {
 	// ID 向量唯一标识符
 	ID string `json:"id"`
@@ -30,7 +31,8 @@ type Vector struct {
 	ModelName string `json:"model_name"`
 }
 
-// VectorSearchRequest 向量搜索请求
+// VectorSearchRequest 定义了向量搜索请求的参数。
+// 支持通过文本或直接向量进行搜索，包含 TopK、相似度阈值和过滤条件。
 type VectorSearchRequest struct {
 	// QueryText 查询文本（用于日志记录）
 	QueryText string `json:"query_text,omitempty"`
@@ -54,7 +56,8 @@ type VectorSearchRequest struct {
 	UserType string `json:"user_type" validate:"required"`
 }
 
-// VectorSearchResult 向量搜索结果
+// VectorSearchResult 定义了向量搜索的单个结果项。
+// 包含匹配的向量 ID、相似度分数、向量数据和关联的 Payload。
 type VectorSearchResult struct {
 	// ID 向量ID
 	ID string `json:"id" validate:"required"`
@@ -69,7 +72,8 @@ type VectorSearchResult struct {
 	Payload map[string]interface{} `json:"payload,omitempty"`
 }
 
-// VectorSearchResponse 向量搜索响应
+// VectorSearchResponse 定义了向量搜索的完整响应。
+// 包含搜索结果列表、总数、耗时和查询相关信息。
 type VectorSearchResponse struct {
 	// Results 搜索结果列表
 	Results []VectorSearchResult `json:"results"`
@@ -84,7 +88,8 @@ type VectorSearchResponse struct {
 	QueryInfo VectorQueryInfo `json:"query_info"`
 }
 
-// VectorQueryInfo 查询信息
+// VectorQueryInfo 定义了搜索查询的元数据。
+// 包含查询向量的维度和是否应用了过滤器。
 type VectorQueryInfo struct {
 	// Dimension 查询向量维度
 	Dimension int `json:"dimension" validate:"required,gt=0"`
@@ -93,7 +98,8 @@ type VectorQueryInfo struct {
 	FilterApplied bool `json:"filter_applied"`
 }
 
-// VectorBatchStoreRequest 【批量】向量存储请求
+// VectorBatchStoreRequest 定义了批量向量存储请求的参数。
+// 包含要存储的向量列表、目标集合名称和是否启用 Upsert 模式。
 type VectorBatchStoreRequest struct {
 	// Vectors 要存储的向量列表
 	Vectors []VectorStoreItem `json:"vectors" validate:"required,min=1"`
@@ -105,7 +111,8 @@ type VectorBatchStoreRequest struct {
 	UpsertMode bool `json:"upsert_mode,omitempty"`
 }
 
-// VectorStoreRequest 【单个】向量存储请求
+// VectorStoreRequest 定义了单个向量存储请求的参数。
+// 包含向量 ID、数值、目标集合名称和关联 Payload。
 type VectorStoreRequest struct {
 	// ID 向量ID
 	ID string `json:"id" validate:"required"`
@@ -123,7 +130,8 @@ type VectorStoreRequest struct {
 	UpsertMode bool `json:"upsert_mode,omitempty"`
 }
 
-// VectorStoreItem 向量存储项
+// VectorStoreItem 定义了批量存储中的单个向量项。
+// 包含 ID、向量数值和 Payload。
 type VectorStoreItem struct {
 	// ID 向量ID
 	ID string `json:"id" validate:"required"`
@@ -135,7 +143,8 @@ type VectorStoreItem struct {
 	Payload map[string]interface{} `json:"payload,omitempty"`
 }
 
-// VectorBatchStoreResponse 向量存储响应
+// VectorBatchStoreResponse 定义了批量向量存储的操作结果。
+// 包含成功和失败的数量、失败 ID 列表和操作耗时。
 type VectorBatchStoreResponse struct {
 	// Success 是否存储成功
 	Success bool `json:"success"`
@@ -156,7 +165,8 @@ type VectorBatchStoreResponse struct {
 	StoreTime float64 `json:"store_time" validate:"min=0"`
 }
 
-// VectorStoreResponse 【单个】向量存储响应
+// VectorStoreResponse 定义了单个向量存储的操作结果。
+// 包含存储成功的向量 ID 和操作耗时。
 type VectorStoreResponse struct {
 	// Success 是否存储成功
 	Success bool `json:"success"`
@@ -171,7 +181,11 @@ type VectorStoreResponse struct {
 	StoreTime float64 `json:"store_time" validate:"min=0"`
 }
 
-// NewVector 创建新的向量
+// NewVector 创建并初始化一个新的 Vector 实例。
+// 自动计算维度并设置创建时间。
+// 参数 id: 向量的唯一标识符。
+// 参数 values: 向量的数值数组。
+// 返回: 初始化后的 Vector 指针。
 func NewVector(id string, values []float32) *Vector {
 	now := time.Now()
 	return &Vector{
@@ -185,7 +199,9 @@ func NewVector(id string, values []float32) *Vector {
 	}
 }
 
-// Validate 验证向量数据的有效性
+// Validate 检查向量数据的有效性。
+// 验证 ID 是否为空，数值数组是否非空，维度是否匹配，以及是否包含无效值 (NaN/Inf)。
+// 返回: 如果验证失败返回 error，否则返回 nil。
 func (v *Vector) Validate() error {
 	if v.ID == "" {
 		return fmt.Errorf("vector ID cannot be empty")
@@ -209,7 +225,9 @@ func (v *Vector) Validate() error {
 	return nil
 }
 
-// Normalize 向量归一化（L2范数）
+// Normalize 对向量进行归一化处理（使用 L2 范数）。
+// 归一化后，向量的模长为 1，便于计算余弦相似度。
+// 如果向量模长为 0，则不进行操作。
 func (v *Vector) Normalize() {
 	norm := v.L2Norm()
 	if norm == 0 {
@@ -223,7 +241,8 @@ func (v *Vector) Normalize() {
 	v.UpdateTime = time.Now()
 }
 
-// L2Norm 计算L2范数
+// L2Norm 计算向量的 L2 范数（欧几里得范数）。
+// 返回: 向量的模长。
 func (v *Vector) L2Norm() float32 {
 	var sum float32
 	for _, val := range v.Values {

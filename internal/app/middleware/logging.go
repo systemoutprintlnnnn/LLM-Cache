@@ -10,10 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// RequestIDKey 请求ID在Context中的键名
+// RequestIDKey 定义了请求 ID 在 Gin Context 中的存储键名。
 const RequestIDKey = "request_id"
 
-// LoggingConfig 日志中间件配置
+// LoggingConfig 定义日志中间件的配置参数。
+// 包含需要跳过的路径、是否记录请求体和响应体、以及日志记录器实例。
 type LoggingConfig struct {
 	// SkipPaths 跳过日志记录的路径（如健康检查接口）
 	SkipPaths []string
@@ -25,8 +26,9 @@ type LoggingConfig struct {
 	Logger logger.Logger
 }
 
-// LoggingMiddleware 返回HTTP日志记录中间件
-// config: 中间件配置，如果为nil则使用默认配置
+// LoggingMiddleware 创建并返回一个用于 HTTP 日志记录的 Gin 中间件。
+// 该中间件会自动生成请求 ID，记录请求的开始和结束信息，以及处理过程中的错误。
+// 参数 config: 中间件配置，如果为 nil 则使用默认配置。
 func LoggingMiddleware(config *LoggingConfig) gin.HandlerFunc {
 	// 使用默认配置
 	if config == nil {
@@ -115,7 +117,8 @@ func LoggingMiddleware(config *LoggingConfig) gin.HandlerFunc {
 	}
 }
 
-// RequestInfo HTTP请求信息
+// RequestInfo 定义了记录在日志中的 HTTP 请求详情。
+// 包含方法、路径、客户端 IP、User-Agent 以及请求头和查询参数等。
 type RequestInfo struct {
 	Method        string            `json:"method"`
 	Path          string            `json:"path"`
@@ -126,7 +129,8 @@ type RequestInfo struct {
 	Headers       map[string]string `json:"headers"`
 }
 
-// ResponseInfo HTTP响应信息
+// ResponseInfo 定义了记录在日志中的 HTTP 响应详情。
+// 包含状态码、处理耗时和响应体大小。
 type ResponseInfo struct {
 	StatusCode   int     `json:"status_code"`
 	DurationMs   float64 `json:"duration_ms"`
@@ -199,7 +203,8 @@ func shouldSkipPath(path string, skipPaths []string) bool {
 	return false
 }
 
-// GetRequestID 从Context中获取请求ID
+// GetRequestID 从 Gin Context 中获取当前请求的 ID。
+// 如果 ID 不存在，返回空字符串。
 func GetRequestID(c *gin.Context) string {
 	if requestID, exists := c.Get(RequestIDKey); exists {
 		return requestID.(string)

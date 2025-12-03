@@ -267,6 +267,27 @@ LLM-Cache 采用 **CloudWeGo Eino 框架** 进行流程编排，基于 Graph 实
 
 详细架构说明，请参考 [架构文档](docs/project/ARCHITECTURE.md) 和 [Eino 集成方案](docs/project/EINO_INTEGRATION_PLAN.md)。
 
+### 📂 目录结构
+
+| 目录 | 说明 |
+|------|------|
+| `cmd/server/` | 应用程序入口，包含 main 函数 |
+| `configs/` | 配置文件结构定义 (`config.go`) 及加载逻辑 |
+| `internal/app/` | Web 服务层，包含 Gin Handlers (`handlers/`), Middleware (`middleware/`) 和 Server (`server/`) |
+| `internal/domain/` | 领域模型层，包含核心数据结构 (`models/`) |
+| `internal/eino/` | 基于 Eino 框架的核心业务实现 |
+| &nbsp;&nbsp;`components/` | Eino 组件工厂 (Embedder, Retriever, Indexer) |
+| &nbsp;&nbsp;`flows/` | 业务流程编排 (Query, Store, Delete Graph) |
+| &nbsp;&nbsp;`nodes/` | 原子业务节点 (Preprocessing, QualityCheck, etc.) |
+| &nbsp;&nbsp;`callbacks/` | 监控与日志回调实现 |
+| `pkg/` | 通用工具库 (Logger, Status Codes) |
+
+## 💻 开发指南
+
+### 代码规范
+
+本项目遵循标准的 Go 语言编码规范。为了保证代码的可维护性，所有导出的函数、类型和方法都必须包含完整的文档注释（Docstring）。注释应清晰地说明代码的功能、参数含义以及返回值。
+
 ## ⚙️ 配置说明
 
 ### Eino 配置参数
