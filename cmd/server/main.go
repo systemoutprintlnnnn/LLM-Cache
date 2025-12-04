@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -72,28 +71,30 @@ func run(ctx context.Context) error {
 // initializeLogger 初始化日志服务
 func initializeLogger(config configs.LoggingConfig) (logger.Logger, error) {
 	// 解析日志级别
-	var level slog.Level
+	var level logger.Level
 	switch config.Level {
 	case "debug":
-		level = slog.LevelDebug
+		level = logger.DebugLevel
 	case "info":
-		level = slog.LevelInfo
+		level = logger.InfoLevel
 	case "warn":
-		level = slog.LevelWarn
+		level = logger.WarnLevel
 	case "error":
-		level = slog.LevelError
+		level = logger.ErrorLevel
 	default:
-		level = slog.LevelInfo
+		level = logger.InfoLevel
 	}
 
 	// 创建日志配置
 	loggerConfig := logger.Config{
-		Level:  level,
-		Output: config.Output,
-	}
-
-	if config.Output == "file" {
-		loggerConfig.FilePath = config.FilePath
+		Level:      level,
+		Output:     config.Output,
+		FilePath:   config.FilePath,
+		Format:     config.Format,
+		MaxSize:    config.MaxSize,
+		MaxBackups: config.MaxBackups,
+		MaxAge:     config.MaxAge,
+		Compress:   config.Compress,
 	}
 
 	return logger.New(loggerConfig), nil

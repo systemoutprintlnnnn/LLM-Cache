@@ -81,11 +81,12 @@ type RemoteEmbedding struct {
 }
 
 // LoggingConfig 定义日志系统的配置参数。
-// 包含日志级别、输出目标（stdout/file）和文件轮转设置等。
+// 包含日志级别、输出目标（stdout/file）、格式（text/json）和文件轮转设置等。
 type LoggingConfig struct {
 	Level      string `yaml:"level"`
 	Output     string `yaml:"output"`
 	FilePath   string `yaml:"file_path"`
+	Format     string `yaml:"format"`
 	MaxSize    int    `yaml:"max_size"`
 	MaxBackups int    `yaml:"max_backups"`
 	MaxAge     int    `yaml:"max_age"`
@@ -275,7 +276,7 @@ func (r *RemoteEmbedding) Validate() error {
 }
 
 // Validate 检查 LoggingConfig 配置的有效性。
-// 确保日志级别和输出目标有效，如果输出到文件，确保文件路径已指定。
+// 确保日志级别、输出目标和格式有效，如果输出到文件，确保文件路径已指定。
 func (l *LoggingConfig) Validate() error {
 	validLevels := map[string]bool{
 		"debug": true, "info": true, "warn": true, "error": true,
@@ -295,6 +296,15 @@ func (l *LoggingConfig) Validate() error {
 
 	if l.Output == "file" && l.FilePath == "" {
 		return fmt.Errorf("file path is required when output is file")
+	}
+
+	// 验证日志格式，空值默认为 text
+	validFormats := map[string]bool{
+		"text": true, "json": true, "": true,
+	}
+
+	if !validFormats[l.Format] {
+		return fmt.Errorf("invalid log format: %s", l.Format)
 	}
 
 	return nil
