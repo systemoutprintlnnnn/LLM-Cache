@@ -78,6 +78,7 @@ type MilvusRetrieverConfig struct {
 	VectorField  string   `yaml:"vector_field"`
 	OutputFields []string `yaml:"output_fields"`
 	MetricType   string   `yaml:"metric_type"`
+	Partition    []string `yaml:"partition"`
 }
 
 // RedisRetrieverConfig 定义 Redis 检索器的专用配置。
@@ -88,6 +89,7 @@ type RedisRetrieverConfig struct {
 	Index        string   `yaml:"index"`
 	VectorField  string   `yaml:"vector_field"`
 	ReturnFields []string `yaml:"return_fields"`
+	Prefix       string   `yaml:"prefix"`
 }
 
 // ES8RetrieverConfig 定义 Elasticsearch 8 检索器的专用配置。
@@ -98,6 +100,7 @@ type ES8RetrieverConfig struct {
 	Index       string   `yaml:"index"`
 	VectorField string   `yaml:"vector_field"`
 	SearchMode  string   `yaml:"search_mode"` // knn, hybrid
+	TextField   string   `yaml:"text_field"`
 }
 
 // IndexerConfig 定义索引器（Indexer）的配置。
@@ -136,6 +139,7 @@ type MilvusIndexerConfig struct {
 	Username    string `yaml:"username"`
 	Password    string `yaml:"password"`
 	VectorField string `yaml:"vector_field"`
+	Partition   string `yaml:"partition"`
 }
 
 // RedisIndexerConfig 定义 Redis 索引器的专用配置。
