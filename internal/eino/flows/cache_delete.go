@@ -38,6 +38,10 @@ type CacheDeleteService struct {
 // 参数 cfg: Retriever 配置（包含向量数据库连接信息）。
 // 返回: CacheDeleteService 指针或错误。
 func NewCacheDeleteService(cfg *config.RetrieverConfig) (*CacheDeleteService, error) {
+	if cfg.Provider != "qdrant" {
+		return nil, fmt.Errorf("cache delete is only implemented for qdrant provider, got: %s", cfg.Provider)
+	}
+
 	// 创建 Qdrant 客户端
 	clientCfg := &qdrantClient.Config{
 		Host: cfg.Qdrant.Host,
