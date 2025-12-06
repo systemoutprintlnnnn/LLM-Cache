@@ -160,7 +160,7 @@ func initializeEinoComponents(
 	log.InfoContext(ctx, "Store Graph 编译成功")
 
 	// 6. 创建 Delete Service
-	deleteService, err := flows.NewCacheDeleteService(&einoCfg.Retriever)
+	deleteService, err := flows.NewCacheDeleteService(ctx, &einoCfg.Retriever)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("delete service 初始化失败: %w", err)
 	}

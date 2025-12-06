@@ -3,12 +3,24 @@ package components
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
+	es8retriever "github.com/cloudwego/eino-ext/components/retriever/es8"
+	es8searchmode "github.com/cloudwego/eino-ext/components/retriever/es8/search_mode"
+	milvusretriever "github.com/cloudwego/eino-ext/components/retriever/milvus"
 	qdrantretriever "github.com/cloudwego/eino-ext/components/retriever/qdrant"
+	redisretriever "github.com/cloudwego/eino-ext/components/retriever/redis"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/retriever"
+	"github.com/cloudwego/eino/schema"
+	"github.com/elastic/go-elasticsearch/v8"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	milvusClient "github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 	qdrantClient "github.com/qdrant/go-client/qdrant"
+	redis "github.com/redis/go-redis/v9"
 
 	"llm-cache/internal/eino/config"
 )
@@ -77,91 +89,107 @@ func newQdrantRetriever(ctx context.Context, cfg *config.RetrieverConfig, embedd
 // newMilvusRetriever 创建 Milvus Retriever
 // 注意：需要添加 github.com/cloudwego/eino-ext/components/retriever/milvus 依赖
 func newMilvusRetriever(ctx context.Context, cfg *config.RetrieverConfig, embedder embedding.Embedder) (retriever.Retriever, error) {
-	/*
-		import (
-			milvusretriever "github.com/cloudwego/eino-ext/components/retriever/milvus"
-			milvusClient "github.com/milvus-io/milvus-sdk-go/v2/client"
-		)
+	client, err := milvusClient.NewClient(ctx, milvusClient.Config{
+		Address:  fmt.Sprintf("%s:%d", cfg.Milvus.Host, cfg.Milvus.Port),
+		Username: cfg.Milvus.Username,
+		Password: cfg.Milvus.Password,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create milvus client: %w", err)
+	}
 
-		client, err := milvusClient.NewClient(ctx, milvusClient.Config{
-			Address:  fmt.Sprintf("%s:%d", cfg.Milvus.Host, cfg.Milvus.Port),
-			Username: cfg.Milvus.Username,
-			Password: cfg.Milvus.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create milvus client: %w", err)
-		}
+	milvusCfg := &milvusretriever.RetrieverConfig{
+		Client:         client,
+		Collection:     cfg.Collection,
+		VectorField:    cfg.Milvus.VectorField,
+		OutputFields:   cfg.Milvus.OutputFields,
+		TopK:           cfg.TopK,
+		Embedding:      embedder,
+		Partition:      cfg.Milvus.Partition,
+		ScoreThreshold: cfg.ScoreThreshold,
+	}
 
-		return milvusretriever.NewRetriever(ctx, &milvusretriever.RetrieverConfig{
-			Client:       client,
-			Collection:   cfg.Collection,
-			VectorField:  cfg.Milvus.VectorField,
-			OutputFields: cfg.Milvus.OutputFields,
-			MetricType:   cfg.Milvus.MetricType,
-			TopK:         cfg.TopK,
-			Embedding:    embedder,
-		})
-	*/
-	return nil, fmt.Errorf("Milvus retriever is not enabled. Please add github.com/cloudwego/eino-ext/components/retriever/milvus dependency")
+	if cfg.Milvus.MetricType != "" {
+		milvusCfg.MetricType = parseMilvusMetricType(cfg.Milvus.MetricType)
+	}
+
+	return milvusretriever.NewRetriever(ctx, milvusCfg)
 }
 
 // newRedisRetriever 创建 Redis Retriever
 // 注意：需要添加 github.com/cloudwego/eino-ext/components/retriever/redis 依赖
 func newRedisRetriever(ctx context.Context, cfg *config.RetrieverConfig, embedder embedding.Embedder) (retriever.Retriever, error) {
-	/*
-		import (
-			redisretriever "github.com/cloudwego/eino-ext/components/retriever/redis"
-			"github.com/redis/go-redis/v9"
-		)
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+		Protocol: 2,
+	})
 
-		rdb := redis.NewClient(&redis.Options{
-			Addr:     cfg.Redis.Addr,
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.DB,
-		})
+	vectorField := cfg.Redis.VectorField
+	if vectorField == "" {
+		vectorField = "vector_content"
+	}
 
-		return redisretriever.NewRetriever(ctx, &redisretriever.RetrieverConfig{
-			Client:            rdb,
-			Index:             cfg.Redis.Index,
-			VectorField:       cfg.Redis.VectorField,
-			TopK:              cfg.TopK,
-			DistanceThreshold: &cfg.ScoreThreshold,
-			Embedding:         embedder,
-			ReturnFields:      cfg.Redis.ReturnFields,
-		})
-	*/
-	return nil, fmt.Errorf("Redis retriever is not enabled. Please add github.com/cloudwego/eino-ext/components/retriever/redis dependency")
+	returnFields := cfg.Redis.ReturnFields
+	if len(returnFields) == 0 {
+		returnFields = []string{"content", vectorField, "metadata"}
+	} else {
+		// ensure metadata field is always returned
+		seen := make(map[string]bool)
+		for _, f := range returnFields {
+			seen[f] = true
+		}
+		if !seen["metadata"] {
+			returnFields = append(returnFields, "metadata")
+		}
+	}
+
+	redisCfg := &redisretriever.RetrieverConfig{
+		Client:            rdb,
+		Index:             cfg.Redis.Index,
+		VectorField:       vectorField,
+		TopK:              cfg.TopK,
+		Embedding:         embedder,
+		ReturnFields:      returnFields,
+		DistanceThreshold: distanceThresholdFromScore(cfg.ScoreThreshold),
+		DocumentConverter: buildRedisDocumentConverter(vectorField),
+	}
+
+	return redisretriever.NewRetriever(ctx, redisCfg)
 }
 
 // newES8Retriever 创建 Elasticsearch Retriever
 // 注意：需要添加 github.com/cloudwego/eino-ext/components/retriever/es8 依赖
 func newES8Retriever(ctx context.Context, cfg *config.RetrieverConfig, embedder embedding.Embedder) (retriever.Retriever, error) {
-	/*
-		import (
-			es8retriever "github.com/cloudwego/eino-ext/components/retriever/es8"
-			"github.com/elastic/go-elasticsearch/v8"
-		)
+	esClient, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: cfg.ES8.Addresses,
+		Username:  cfg.ES8.Username,
+		Password:  cfg.ES8.Password,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create elasticsearch client: %w", err)
+	}
 
-		esClient, err := elasticsearch.NewClient(elasticsearch.Config{
-			Addresses: cfg.ES8.Addresses,
-			Username:  cfg.ES8.Username,
-			Password:  cfg.ES8.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create elasticsearch client: %w", err)
-		}
+	vectorField := cfg.ES8.VectorField
+	if vectorField == "" {
+		vectorField = "vector"
+	}
 
-		return es8retriever.NewRetriever(ctx, &es8retriever.RetrieverConfig{
-			Client:         esClient,
-			Index:          cfg.ES8.Index,
-			TopK:           cfg.TopK,
-			ScoreThreshold: &cfg.ScoreThreshold,
-			Embedding:      embedder,
-			SearchMode:     cfg.ES8.SearchMode,
-			VectorField:    cfg.ES8.VectorField,
-		})
-	*/
-	return nil, fmt.Errorf("Elasticsearch retriever is not enabled. Please add github.com/cloudwego/eino-ext/components/retriever/es8 dependency")
+	searchMode := buildESSearchMode(cfg, vectorField)
+	resultParser := buildESResultParser()
+
+	esCfg := &es8retriever.RetrieverConfig{
+		Client:         esClient,
+		Index:          cfg.ES8.Index,
+		TopK:           cfg.TopK,
+		ScoreThreshold: thresholdPtr(cfg.ScoreThreshold),
+		Embedding:      embedder,
+		SearchMode:     searchMode,
+		ResultParser:   resultParser,
+	}
+
+	return es8retriever.NewRetriever(ctx, esCfg)
 }
 
 // newVikingDBRetriever 创建 VikingDB Retriever
@@ -200,4 +228,133 @@ func GetQdrantClient(cfg *config.RetrieverConfig) (*qdrantClient.Client, error) 
 	}
 
 	return qdrantClient.NewClient(clientCfg)
+}
+
+// parseMilvusMetricType maps a config string to milvus entity metric type.
+func parseMilvusMetricType(metric string) entity.MetricType {
+	switch strings.ToLower(metric) {
+	case "ip", "inner", "inner_product":
+		return entity.IP
+	case "l2", "euclid", "euclidean":
+		return entity.L2
+	case "hamming":
+		return entity.HAMMING
+	case "cosine":
+		return entity.COSINE
+	default:
+		return entity.MetricType("")
+	}
+}
+
+func distanceThresholdFromScore(score float64) *float64 {
+	if score <= 0 {
+		return nil
+	}
+	return &score
+}
+
+// buildRedisDocumentConverter parses metadata json back into MetaData.
+func buildRedisDocumentConverter(vectorField string) func(ctx context.Context, doc redis.Document) (*schema.Document, error) {
+	return func(ctx context.Context, doc redis.Document) (*schema.Document, error) {
+		resp := &schema.Document{
+			ID:       doc.ID,
+			MetaData: map[string]any{},
+		}
+
+		if val, ok := doc.Fields["content"]; ok {
+			resp.Content = val
+		}
+
+		if v, ok := doc.Fields[vectorField]; ok {
+			resp.WithDenseVector(redisretriever.Bytes2Vector([]byte(v)))
+		}
+
+		if metaStr, ok := doc.Fields["metadata"]; ok && metaStr != "" {
+			var metadata map[string]any
+			if err := json.Unmarshal([]byte(metaStr), &metadata); err == nil {
+				for k, v := range metadata {
+					resp.MetaData[k] = v
+				}
+			}
+		}
+
+		// capture any additional return fields
+		for k, v := range doc.Fields {
+			if k != "content" && k != vectorField && k != "metadata" {
+				resp.MetaData[k] = v
+			}
+		}
+
+		return resp, nil
+	}
+}
+
+// buildESSearchMode builds an ES8 search mode according to config.
+func buildESSearchMode(cfg *config.RetrieverConfig, vectorField string) es8retriever.SearchMode {
+	switch strings.ToLower(cfg.ES8.SearchMode) {
+	case "hybrid":
+		queryField := cfg.ES8.TextField
+		if queryField == "" {
+			queryField = "content"
+		}
+		return es8searchmode.SearchModeApproximate(&es8searchmode.ApproximateConfig{
+			QueryFieldName:  queryField,
+			VectorFieldName: vectorField,
+			Hybrid:          true,
+		})
+	default:
+		return es8searchmode.SearchModeDenseVectorSimilarity(
+			es8searchmode.DenseVectorSimilarityTypeCosineSimilarity, vectorField)
+	}
+}
+
+// buildESResultParser converts ES hits back to schema.Document with metadata.
+func buildESResultParser() func(ctx context.Context, hit types.Hit) (*schema.Document, error) {
+	return func(ctx context.Context, hit types.Hit) (*schema.Document, error) {
+		doc := &schema.Document{
+			MetaData: map[string]any{},
+		}
+
+		if hit.Id_ != nil {
+			doc.ID = *hit.Id_
+		}
+		if hit.Score_ != nil {
+			doc.WithScore(float64(*hit.Score_))
+		}
+
+		if len(hit.Source_) > 0 {
+			var src map[string]any
+			if err := json.Unmarshal(hit.Source_, &src); err != nil {
+				return nil, fmt.Errorf("parse es source: %w", err)
+			}
+
+			if content, ok := src["content"].(string); ok {
+				doc.Content = content
+			}
+
+			if metadataRaw, ok := src["metadata"]; ok {
+				if metadataMap, ok := metadataRaw.(map[string]any); ok {
+					for k, v := range metadataMap {
+						doc.MetaData[k] = v
+					}
+				}
+			}
+
+			for k, v := range src {
+				if k == "content" || k == "metadata" {
+					continue
+				}
+				doc.MetaData[k] = v
+			}
+		}
+
+		return doc, nil
+	}
+}
+
+func thresholdPtr(score float64) *float64 {
+	if score <= 0 {
+		return nil
+	}
+	return &score
 }

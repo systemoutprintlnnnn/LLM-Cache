@@ -3,12 +3,20 @@ package components
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	es8indexer "github.com/cloudwego/eino-ext/components/indexer/es8"
+	milvusindexer "github.com/cloudwego/eino-ext/components/indexer/milvus"
 	qdrantindexer "github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	redisindexer "github.com/cloudwego/eino-ext/components/indexer/redis"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/indexer"
+	"github.com/cloudwego/eino/schema"
+	"github.com/elastic/go-elasticsearch/v8"
+	milvusClient "github.com/milvus-io/milvus-sdk-go/v2/client"
 	qdrantClient "github.com/qdrant/go-client/qdrant"
+	redis "github.com/redis/go-redis/v9"
 
 	"llm-cache/internal/eino/config"
 )
@@ -91,83 +99,79 @@ func parseQdrantDistance(dist string) qdrantClient.Distance {
 // newMilvusIndexer 创建 Milvus Indexer
 // 注意：需要添加 github.com/cloudwego/eino-ext/components/indexer/milvus 依赖
 func newMilvusIndexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
-	/*
-		import (
-			milvusindexer "github.com/cloudwego/eino-ext/components/indexer/milvus"
-			milvusClient "github.com/milvus-io/milvus-sdk-go/v2/client"
-		)
+	client, err := milvusClient.NewClient(ctx, milvusClient.Config{
+		Address:  fmt.Sprintf("%s:%d", cfg.Milvus.Host, cfg.Milvus.Port),
+		Username: cfg.Milvus.Username,
+		Password: cfg.Milvus.Password,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create milvus client: %w", err)
+	}
 
-		client, err := milvusClient.NewClient(ctx, milvusClient.Config{
-			Address:  fmt.Sprintf("%s:%d", cfg.Milvus.Host, cfg.Milvus.Port),
-			Username: cfg.Milvus.Username,
-			Password: cfg.Milvus.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create milvus client: %w", err)
-		}
+	milvusCfg := &milvusindexer.IndexerConfig{
+		Client:     client,
+		Collection: cfg.Collection,
+		Embedding:  embedder,
+	}
 
-		return milvusindexer.NewIndexer(ctx, &milvusindexer.IndexerConfig{
-			Client:      client,
-			Collection:  cfg.Collection,
-			Embedding:   embedder,
-			VectorField: cfg.Milvus.VectorField,
-		})
-	*/
-	return nil, fmt.Errorf("Milvus indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/milvus dependency")
+	// Optional partition support
+	if cfg.Milvus.Partition != "" {
+		milvusCfg.PartitionName = cfg.Milvus.Partition
+	}
+
+	return milvusindexer.NewIndexer(ctx, milvusCfg)
 }
 
 // newRedisIndexer 创建 Redis Indexer
 // 注意：需要添加 github.com/cloudwego/eino-ext/components/indexer/redis 依赖
 func newRedisIndexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
-	/*
-		import (
-			redisindexer "github.com/cloudwego/eino-ext/components/indexer/redis"
-			"github.com/redis/go-redis/v9"
-		)
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+		Protocol: 2, // RESP2 is required for FT.* commands to return structured data
+	})
 
-		rdb := redis.NewClient(&redis.Options{
-			Addr:     cfg.Redis.Addr,
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.DB,
-		})
+	vectorField := cfg.Redis.VectorField
+	if vectorField == "" {
+		vectorField = "vector_content"
+	}
 
-		return redisindexer.NewIndexer(ctx, &redisindexer.IndexerConfig{
-			Client:      rdb,
-			Index:       cfg.Redis.Index,
-			Prefix:      cfg.Redis.Prefix,
-			VectorField: cfg.Redis.VectorField,
-			Embedding:   embedder,
-		})
-	*/
-	return nil, fmt.Errorf("Redis indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/redis dependency")
+	indexerCfg := &redisindexer.IndexerConfig{
+		Client:           redisClient,
+		KeyPrefix:        cfg.Redis.Prefix,
+		DocumentToHashes: buildRedisDocumentToHashes(vectorField),
+		Embedding:        embedder,
+	}
+
+	return redisindexer.NewIndexer(ctx, indexerCfg)
 }
 
 // newES8Indexer 创建 Elasticsearch Indexer
 // 注意：需要添加 github.com/cloudwego/eino-ext/components/indexer/es8 依赖
 func newES8Indexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
-	/*
-		import (
-			es8indexer "github.com/cloudwego/eino-ext/components/indexer/es8"
-			"github.com/elastic/go-elasticsearch/v8"
-		)
+	esClient, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: cfg.ES8.Addresses,
+		Username:  cfg.ES8.Username,
+		Password:  cfg.ES8.Password,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create elasticsearch client: %w", err)
+	}
 
-		esClient, err := elasticsearch.NewClient(elasticsearch.Config{
-			Addresses: cfg.ES8.Addresses,
-			Username:  cfg.ES8.Username,
-			Password:  cfg.ES8.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create elasticsearch client: %w", err)
-		}
+	vectorField := cfg.ES8.VectorField
+	if vectorField == "" {
+		vectorField = "vector"
+	}
 
-		return es8indexer.NewIndexer(ctx, &es8indexer.IndexerConfig{
-			Client:      esClient,
-			Index:       cfg.ES8.Index,
-			VectorField: cfg.ES8.VectorField,
-			Embedding:   embedder,
-		})
-	*/
-	return nil, fmt.Errorf("Elasticsearch indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/es8 dependency")
+	indexerCfg := &es8indexer.IndexerConfig{
+		Client:           esClient,
+		Index:            cfg.ES8.Index,
+		DocumentToFields: buildESDocumentToFields(vectorField),
+		Embedding:        embedder,
+	}
+
+	return es8indexer.NewIndexer(ctx, indexerCfg)
 }
 
 // newVikingDBIndexer 创建 VikingDB Indexer
@@ -183,4 +187,58 @@ func newVikingDBIndexer(ctx context.Context, cfg *config.IndexerConfig, embedder
 		})
 	*/
 	return nil, fmt.Errorf("VikingDB indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/vikingdb dependency")
+}
+
+// buildRedisDocumentToHashes returns a DocumentToHashes function that stores
+// metadata as a JSON string and embeds content into the configured vector field.
+func buildRedisDocumentToHashes(vectorField string) func(ctx context.Context, doc *schema.Document) (*redisindexer.Hashes, error) {
+	return func(ctx context.Context, doc *schema.Document) (*redisindexer.Hashes, error) {
+		if doc == nil {
+			return nil, fmt.Errorf("doc is nil")
+		}
+		metaBytes, err := json.Marshal(doc.MetaData)
+		if err != nil {
+			return nil, fmt.Errorf("marshal metadata: %w", err)
+		}
+
+		fieldValues := map[string]redisindexer.FieldValue{
+			"content": {
+				Value:    doc.Content,
+				EmbedKey: vectorField,
+			},
+			"metadata": {
+				Value: string(metaBytes),
+			},
+		}
+
+		return &redisindexer.Hashes{
+			Key:         doc.ID,
+			Field2Value: fieldValues,
+		}, nil
+	}
+}
+
+// buildESDocumentToFields returns a DocumentToFields converter that embeds content
+// into the provided vector field and keeps metadata as a JSON object.
+func buildESDocumentToFields(vectorField string) func(ctx context.Context, doc *schema.Document) (map[string]es8indexer.FieldValue, error) {
+	return func(ctx context.Context, doc *schema.Document) (map[string]es8indexer.FieldValue, error) {
+		if doc == nil {
+			return nil, fmt.Errorf("doc is nil")
+		}
+
+		fields := map[string]es8indexer.FieldValue{
+			"content": {
+				Value: doc.Content,
+			},
+			"metadata": {
+				Value: doc.MetaData,
+			},
+			vectorField: {
+				Value:    doc.Content,
+				EmbedKey: vectorField,
+			},
+		}
+
+		return fields, nil
+	}
 }
