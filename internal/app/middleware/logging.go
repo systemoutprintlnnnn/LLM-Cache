@@ -168,7 +168,7 @@ func extractRequestInfo(c *gin.Context, requestID string) *RequestInfo {
 	importantHeaders := []string{"Content-Type", "Accept", "Authorization", "X-Forwarded-For"}
 	for _, header := range importantHeaders {
 		if value := c.GetHeader(header); value != "" {
-			headers[header] = value
+			headers[header] = sanitizeHeaderValue(header, value)
 		}
 	}
 
@@ -180,6 +180,16 @@ func extractRequestInfo(c *gin.Context, requestID string) *RequestInfo {
 		ContentLength: c.Request.ContentLength,
 		QueryParams:   queryParams,
 		Headers:       headers,
+	}
+}
+
+// sanitizeHeaderValue 对敏感头进行脱敏，避免日志泄露凭证。
+func sanitizeHeaderValue(headerName, headerValue string) string {
+	switch strings.ToLower(headerName) {
+	case "authorization", "proxy-authorization", "x-api-key", "api-key", "cookie", "set-cookie":
+		return "[REDACTED]"
+	default:
+		return headerValue
 	}
 }
 
