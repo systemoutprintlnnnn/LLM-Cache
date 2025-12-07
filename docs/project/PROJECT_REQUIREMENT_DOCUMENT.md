@@ -1,23 +1,29 @@
 # LLM-Cache 产品需求文档 (PRD)
 
 > **产品名称**: LLM-Cache  
-> **文档版本**: v2.0 (基于代码实现反推生成)  
+> **文档版本**: v3.0 (Eino 框架重构版)  
 > **创建日期**: 2025年10月1日  
+> **最后更新**: 2025年12月1日  
 > **产品类型**: To B - 企业级LLM语义缓存中间件  
-> **技术栈**: Golang + Qdrant向量数据库 + 远程Embedding服务  
+> **技术栈**: Golang + CloudWeGo Eino 框架 + 多向量数据库支持 + 多Embedding服务支持  
 
 ---
 
 ## 📌 文档说明
 
-⚠️ **重要提示**: 本PRD通过分析已有代码实现反向生成,部分业务背景为技术推断,建议与产品团队确认并补充完善。
+**v3.0 重大更新**:
+- ✅ 基于 CloudWeGo Eino 框架重构，采用 Graph 流程编排
+- ✅ 支持多向量数据库（Qdrant/Milvus/Redis/ES8/VikingDB）
+- ✅ 支持多 Embedding 提供商（OpenAI/ARK/Ollama/Dashscope/Qianfan/Tencentcloud）
+- ✅ 内置 Callback 可观测性机制
+- ✅ Handler 直接依赖 `compose.Runnable` 原生类型
 
 **文档生成依据**:
 - ✅ HTTP API接口设计 (基于`cache_handler.go`, `routes.go`)
 - ✅ 数据模型定义 (基于`models/cache.go`, `models/vector.go`)
-- ✅ 配置规则 (基于`configs/config.go`)
-- ✅ 业务流程 (基于`services/cache_service.go`)
-- ✅ 架构设计 (基于项目目录结构和main.go)
+- ✅ 配置规则 (基于`configs/config.go`, `internal/eino/config/`)
+- ✅ 业务流程 (基于`internal/eino/flows/`的 Graph 编排)
+- ✅ 架构设计 (基于 Eino 组件和 Graph 流程)
 
 ---
 
@@ -29,10 +35,13 @@
 LLM-Cache 是一个基于Golang的**高性能LLM语义缓存中间件**,通过向量相似度匹配技术智能缓存相似问答对,大幅降低LLM API调用成本并提升响应速度。
 
 **核心技术**:
-- 语义向量检索 (基于Qdrant向量数据库)
-- 远程Embedding服务集成 (支持OpenAI等主流模型)
-- 多阶段处理流水线 (预处理 → 向量化 → 召回 → 后处理 → 质量评估)
-- 用户类型隔离 (user_type字段实现多租户场景隔离)
+- **CloudWeGo Eino 框架**: 基于 Graph 的 LLM 应用流程编排
+- **语义向量检索**: 支持 Qdrant/Milvus/Redis/ES8/VikingDB 多种向量数据库
+- **多 Embedding 提供商**: OpenAI/ARK/Ollama/Dashscope/Qianfan/Tencentcloud
+- **Graph 流程编排**: 查询 Graph (Preprocess → Retrieve → Select → Postprocess)
+- **可插拔 Lambda 节点**: 预处理、后处理、质量检查、结果选择
+- **Callback 可观测性**: 内置日志/指标/追踪，支持 Langfuse/APMPlus 集成
+- **用户类型隔离**: user_type 字段实现多租户场景隔离
 
 ### 1.2 目标用户
 
@@ -139,13 +148,18 @@ LLM-Cache 是一个基于Golang的**高性能LLM语义缓存中间件**,通过�
 3. **TopK限制**: 1-100之间,默认值可配置
 4. **用户类型隔离**: 查询时只在相同`user_type`的缓存中搜索
 
-**处理流程** [从代码推断]:
-1. 请求参数验证 → 
-2. 调用预处理服务清洗问题文本 → 
-3. 调用Embedding服务生成问题向量 → 
-4. 在Qdrant中执行向量相似度搜索 → 
-5. 召回后处理(排序、过滤) → 
+**处理流程** (基于 Eino Graph 编排):
+1. 请求参数验证 (Handler 层) → 
+2. **Preprocess 节点**: 文本清洗、标准化 → 
+3. **Retrieve 节点**: 调用 Eino Retriever (内含 Embedding + 向量检索) → 
+4. **Select 节点**: 结果选择 (支持 first/highest_score/temperature_softmax) → 
+5. **Postprocess 节点**: 格式化输出 → 
 6. 返回最佳匹配结果
+
+**Graph 流程图**:
+```
+START → Preprocess → Retrieve → Select → Postprocess → END
+```
 
 **相似度计算** [从配置推断]:
 - 距离度量: Cosine相似度 (在Qdrant配置中指定)
