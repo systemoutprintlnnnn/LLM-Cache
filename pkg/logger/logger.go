@@ -1,158 +1,253 @@
-// 日志接口
+// 日志接口与实现（基于 logrus，支持上下文字段注入与 JSON 输出）
 package logger
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/sirupsen/logrus"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+// Fields 是日志字段的统一类型。
+type Fields map[string]interface{}
+
 // Logger 定义通用的日志记录器接口。
-// 提供了一组标准的方法来记录不同级别（Debug, Info, Warn, Error）的日志，
-// 并支持携带上下文信息（Context）以便于链路追踪。
+// 提供了一组标准方法来记录不同级别的日志，并支持上下文字段自动合并。
 type Logger interface {
-	// 基础日志方法
+	// 基础日志方法（不依赖 context）
 	Debug(msg string, args ...interface{})
 	Info(msg string, args ...interface{})
 	Warn(msg string, args ...interface{})
 	Error(msg string, args ...interface{})
 
-	// 带上下文的日志方法
+	// 带上下文的日志方法，会自动合并通过 InjectFields 注入的字段
 	DebugContext(ctx context.Context, msg string, args ...interface{})
 	InfoContext(ctx context.Context, msg string, args ...interface{})
 	WarnContext(ctx context.Context, msg string, args ...interface{})
 	ErrorContext(ctx context.Context, msg string, args ...interface{})
-
-	// 获取底层slog.Logger，用于与现有基础设施兼容
-	SlogLogger() *slog.Logger
 }
 
-// Config 定义日志系统的配置参数。
-// 包含日志级别、输出目标（标准输出或文件）以及文件路径。
+// Config 定义日志配置。
+// 兼容现有的 logging 配置，并新增 JSON/滚动参数支持。
 type Config struct {
-	Level    slog.Level // 日志级别
-	Output   string     // 输出：stdout、stderr、file
-	FilePath string     // 文件路径（当Output为file时）
+	Level        logrus.Level
+	Output       string // stdout、stderr、file
+	FilePath     string
+	MaxSize      int // MB
+	MaxBackups   int
+	MaxAge       int // days
+	Compress     bool
+	ReportCaller bool
+	JSONFormat   bool // 默认 true
 }
 
-// appLogger 日志器接口的具体实现，封装了 slog.Logger。
+// appLogger 是 Logger 的具体实现，封装 logrus。
 type appLogger struct {
-	logger *slog.Logger
+	base *logrus.Logger
 }
 
-// Default 创建并返回一个使用默认配置的 Logger 实例。
-// 默认配置为：输出到 stdout，级别为 Info。
+// Default 返回默认 Logger（stdout、info、JSON）。
 func Default() Logger {
-	return &appLogger{
-		logger: slog.Default(),
-	}
+	return New(Config{
+		Level:      logrus.InfoLevel,
+		Output:     "stdout",
+		JSONFormat: true,
+	})
 }
 
-// New 根据提供的配置创建一个新的 Logger 实例。
-// 如果配置了文件输出，会自动创建目录和文件。
-// 参数 config: 日志配置。
-// 返回: Logger 接口实例。
+// New 根据配置创建 Logger。
 func New(config Config) Logger {
-	handler := createHandler(config)
-	return &appLogger{
-		logger: slog.New(handler),
+	l := logrus.New()
+	l.SetLevel(config.Level)
+	l.SetReportCaller(config.ReportCaller)
+	l.SetOutput(resolveWriter(config))
+
+	if config.JSONFormat {
+		l.SetFormatter(&logrus.JSONFormatter{
+			TimestampFormat: time.RFC3339Nano,
+		})
+	} else {
+		l.SetFormatter(&logrus.TextFormatter{
+			FullTimestamp:   true,
+			TimestampFormat: time.RFC3339Nano,
+		})
 	}
+
+	return &appLogger{base: l}
 }
 
-// createHandler 内部辅助函数：根据配置创建 slog.Handler。
-func createHandler(config Config) slog.Handler {
-	// 基本配置 - 与默认slog保持一致
-	opts := &slog.HandlerOptions{
-		Level:       config.Level,
-		AddSource:   false,
-		ReplaceAttr: nil,
-	}
-
-	// 获取输出Writer
-	writer := getWriter(config)
-
-	// 统一使用TextHandler
-	return slog.NewTextHandler(writer, opts)
-}
-
-// getWriter 内部辅助函数：获取日志输出的 Writer。
-func getWriter(config Config) io.Writer {
+// resolveWriter 根据配置选择输出。
+func resolveWriter(config Config) io.Writer {
 	switch config.Output {
-	case "stdout":
-		return os.Stdout
 	case "stderr":
 		return os.Stderr
 	case "file":
 		if config.FilePath == "" {
+			fmt.Fprintf(os.Stderr, "日志文件路径为空，回退到 stdout\n")
 			return os.Stdout
 		}
-
-		// 确保目录存在
 		dir := filepath.Dir(config.FilePath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "创建日志目录失败: %v\n", err)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "创建日志目录失败: %v，回退到 stdout\n", err)
 			return os.Stdout
 		}
-
-		// 打开文件
-		file, err := os.OpenFile(config.FilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "打开日志文件失败: %v\n", err)
-			return os.Stdout
+		return &lumberjack.Logger{
+			Filename:   config.FilePath,
+			MaxSize:    config.MaxSize,
+			MaxBackups: config.MaxBackups,
+			MaxAge:     config.MaxAge,
+			Compress:   config.Compress,
 		}
-		return file
 	default:
 		return os.Stdout
 	}
 }
 
-// Debug 记录 Debug 级别的日志。
+// Debug 记录 Debug 级别日志。
 func (l *appLogger) Debug(msg string, args ...interface{}) {
-	l.logger.Debug(msg, args...)
+	l.logWithContext(context.Background(), logrus.DebugLevel, msg, args...)
 }
 
-// Info 记录 Info 级别的日志。
+// Info 记录 Info 级别日志。
 func (l *appLogger) Info(msg string, args ...interface{}) {
-	l.logger.Info(msg, args...)
+	l.logWithContext(context.Background(), logrus.InfoLevel, msg, args...)
 }
 
-// Warn 记录 Warn 级别的日志。
+// Warn 记录 Warn 级别日志。
 func (l *appLogger) Warn(msg string, args ...interface{}) {
-	l.logger.Warn(msg, args...)
+	l.logWithContext(context.Background(), logrus.WarnLevel, msg, args...)
 }
 
-// Error 记录 Error 级别的日志。
+// Error 记录 Error 级别日志。
 func (l *appLogger) Error(msg string, args ...interface{}) {
-	l.logger.Error(msg, args...)
+	l.logWithContext(context.Background(), logrus.ErrorLevel, msg, args...)
 }
 
-// DebugContext 记录带上下文的 Debug 级别日志。
+// DebugContext 记录 Debug 级别日志，自动合并上下文字段。
 func (l *appLogger) DebugContext(ctx context.Context, msg string, args ...interface{}) {
-	l.logger.DebugContext(ctx, msg, args...)
+	l.logWithContext(ctx, logrus.DebugLevel, msg, args...)
 }
 
-// InfoContext 记录带上下文的 Info 级别日志。
+// InfoContext 记录 Info 级别日志，自动合并上下文字段。
 func (l *appLogger) InfoContext(ctx context.Context, msg string, args ...interface{}) {
-	l.logger.InfoContext(ctx, msg, args...)
+	l.logWithContext(ctx, logrus.InfoLevel, msg, args...)
 }
 
-// WarnContext 记录带上下文的 Warn 级别日志。
+// WarnContext 记录 Warn 级别日志，自动合并上下文字段。
 func (l *appLogger) WarnContext(ctx context.Context, msg string, args ...interface{}) {
-	l.logger.WarnContext(ctx, msg, args...)
+	l.logWithContext(ctx, logrus.WarnLevel, msg, args...)
 }
 
-// ErrorContext 记录带上下文的 Error 级别日志。
+// ErrorContext 记录 Error 级别日志，自动合并上下文字段。
 func (l *appLogger) ErrorContext(ctx context.Context, msg string, args ...interface{}) {
-	l.logger.ErrorContext(ctx, msg, args...)
+	l.logWithContext(ctx, logrus.ErrorLevel, msg, args...)
 }
 
-// SlogLogger 获取底层的 slog.Logger 实例。
-func (l *appLogger) SlogLogger() *slog.Logger {
-	return l.logger
+// logWithContext 将上下文字段与显式字段合并后输出。
+func (l *appLogger) logWithContext(ctx context.Context, level logrus.Level, msg string, args ...interface{}) {
+	entry := l.base.WithContext(ctx)
+	fields := mergeFields(ExtractFields(ctx), parseArgs(args))
+	if len(fields) > 0 {
+		entry = entry.WithFields(logrus.Fields(fields))
+	}
+	entry.Log(level, msg)
 }
+
+// parseArgs 将可变参数解析为字段，期望 key,value 形式。
+func parseArgs(args []interface{}) Fields {
+	fields := Fields{}
+	length := len(args)
+	if length == 0 {
+		return fields
+	}
+
+	if length%2 != 0 {
+		fields["logger_args_error"] = "expected even number of arguments"
+		length-- // 尝试解析前面的偶数部分
+	}
+
+	for i := 0; i < length; i += 2 {
+		key, ok := args[i].(string)
+		if !ok {
+			fields[fmt.Sprintf("arg_%d", i)] = args[i+1]
+			continue
+		}
+		fields[key] = args[i+1]
+	}
+	return fields
+}
+
+// mergeFields 合并上下文字段与本次日志字段，后者覆盖同名键。
+func mergeFields(ctxFields Fields, logFields Fields) Fields {
+	if len(ctxFields) == 0 && len(logFields) == 0 {
+		return nil
+	}
+	result := Fields{}
+	for k, v := range ctxFields {
+		result[k] = v
+	}
+	for k, v := range logFields {
+		result[k] = v
+	}
+	return result
+}
+
+// InjectFields 将字段注入到 context，后续日志会自动带上。
+// 如果上下文为空，会使用 context.Background()。
+func InjectFields(ctx context.Context, fields Fields) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(fields) == 0 {
+		return ctx
+	}
+	current := ExtractFields(ctx)
+	merged := Fields{}
+	for k, v := range current {
+		merged[k] = v
+	}
+	for k, v := range fields {
+		merged[k] = v
+	}
+	return context.WithValue(ctx, fieldsContextKey, merged)
+}
+
+// ExtractFields 从 context 中提取已注入的字段。
+// 返回的 map 是副本，可安全修改。
+func ExtractFields(ctx context.Context) Fields {
+	if ctx == nil {
+		return Fields{}
+	}
+	if v := ctx.Value(fieldsContextKey); v != nil {
+		if fields, ok := v.(Fields); ok && fields != nil {
+			copyFields := Fields{}
+			for k, val := range fields {
+				copyFields[k] = val
+			}
+			return copyFields
+		}
+	}
+	return Fields{}
+}
+
+// ToArgs 将字段转换为可用于日志方法的 key,value 形式。
+func (f Fields) ToArgs() []interface{} {
+	args := make([]interface{}, 0, len(f)*2)
+	for k, v := range f {
+		args = append(args, k, v)
+	}
+	return args
+}
+
+// 上下文字段使用的 key，避免冲突
+type contextKey string
+
+const fieldsContextKey contextKey = "logger_fields"
 
 // 全局默认日志器
 var defaultLogger Logger = Default()

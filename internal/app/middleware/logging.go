@@ -62,20 +62,24 @@ func LoggingMiddleware(config *LoggingConfig) gin.HandlerFunc {
 		// 提取请求信息
 		requestInfo := extractRequestInfo(c, requestID)
 
-		// 创建带有请求ID的context
-		ctx := context.WithValue(c.Request.Context(), RequestIDKey, requestID)
+		// 创建带有请求字段的context，后续日志自动携带
+		ctx := logger.InjectFields(
+			context.WithValue(c.Request.Context(), RequestIDKey, requestID),
+			logger.Fields{
+				"request_id":     requestID,
+				"method":         requestInfo.Method,
+				"path":           requestInfo.Path,
+				"client_ip":      requestInfo.ClientIP,
+				"user_agent":     requestInfo.UserAgent,
+				"content_length": requestInfo.ContentLength,
+				"query_params":   requestInfo.QueryParams,
+				"headers":        requestInfo.Headers,
+			},
+		)
 		c.Request = c.Request.WithContext(ctx)
 
 		// 记录请求开始日志
-		config.Logger.InfoContext(ctx, "HTTP请求开始",
-			"request_id", requestID,
-			"method", requestInfo.Method,
-			"path", requestInfo.Path,
-			"client_ip", requestInfo.ClientIP,
-			"user_agent", requestInfo.UserAgent,
-			"content_length", requestInfo.ContentLength,
-			"query_params", requestInfo.QueryParams,
-		)
+		config.Logger.InfoContext(ctx, "HTTP请求开始")
 
 		// 创建自定义ResponseWriter来捕获响应信息
 		responseWriter := &responseWriter{
@@ -94,24 +98,19 @@ func LoggingMiddleware(config *LoggingConfig) gin.HandlerFunc {
 		// 提取响应信息
 		responseInfo := extractResponseInfo(c, responseWriter, duration)
 
-		config.Logger.InfoContext(ctx, "HTTP请求完成",
-			"request_id", requestID,
-			"method", requestInfo.Method,
-			"path", requestInfo.Path,
-			"status_code", statusCode,
-			"duration_ms", responseInfo.DurationMs,
-			"response_size", responseInfo.ResponseSize,
-			"client_ip", requestInfo.ClientIP,
-		)
+		config.Logger.InfoContext(ctx, "HTTP请求完成", logger.Fields{
+			"status_code":   statusCode,
+			"duration_ms":   responseInfo.DurationMs,
+			"response_size": responseInfo.ResponseSize,
+		}.ToArgs()...)
 
 		// 如果有错误，记录详细错误信息
 		if len(c.Errors) > 0 {
 			for _, err := range c.Errors {
-				config.Logger.ErrorContext(ctx, "HTTP请求处理错误",
-					"request_id", requestID,
-					"error", err.Error(),
-					"error_type", err.Type,
-				)
+				config.Logger.ErrorContext(ctx, "HTTP请求处理错误", logger.Fields{
+					"error":      err.Error(),
+					"error_type": err.Type,
+				}.ToArgs()...)
 			}
 		}
 	}
@@ -169,7 +168,7 @@ func extractRequestInfo(c *gin.Context, requestID string) *RequestInfo {
 	importantHeaders := []string{"Content-Type", "Accept", "Authorization", "X-Forwarded-For"}
 	for _, header := range importantHeaders {
 		if value := c.GetHeader(header); value != "" {
-			headers[header] = value
+			headers[header] = sanitizeHeaderValue(header, value)
 		}
 	}
 
@@ -181,6 +180,16 @@ func extractRequestInfo(c *gin.Context, requestID string) *RequestInfo {
 		ContentLength: c.Request.ContentLength,
 		QueryParams:   queryParams,
 		Headers:       headers,
+	}
+}
+
+// sanitizeHeaderValue 对敏感头进行脱敏，避免日志泄露凭证。
+func sanitizeHeaderValue(headerName, headerValue string) string {
+	switch strings.ToLower(headerName) {
+	case "authorization", "proxy-authorization", "x-api-key", "api-key", "cookie", "set-cookie":
+		return "[REDACTED]"
+	default:
+		return headerValue
 	}
 }
 
