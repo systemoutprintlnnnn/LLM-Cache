@@ -200,11 +200,11 @@ func mergeFields(ctxFields Fields, logFields Fields) Fields {
 // InjectFields 将字段注入到 context，后续日志会自动带上。
 // 如果上下文为空，会使用 context.Background()。
 func InjectFields(ctx context.Context, fields Fields) context.Context {
-	if len(fields) == 0 {
-		return ctx
-	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if len(fields) == 0 {
+		return ctx
 	}
 	current := ExtractFields(ctx)
 	merged := Fields{}
