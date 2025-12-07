@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/cloudwego/eino/compose"
+	"github.com/sirupsen/logrus"
 
 	"llm-cache/configs"
 	"llm-cache/internal/app/handlers"
@@ -72,28 +72,34 @@ func run(ctx context.Context) error {
 // initializeLogger 初始化日志服务
 func initializeLogger(config configs.LoggingConfig) (logger.Logger, error) {
 	// 解析日志级别
-	var level slog.Level
-	switch config.Level {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
-		level = slog.LevelInfo
+	level, err := logrus.ParseLevel(config.Level)
+	if err != nil {
+		level = logrus.InfoLevel
 	}
 
 	// 创建日志配置
 	loggerConfig := logger.Config{
-		Level:  level,
-		Output: config.Output,
+		Level:      level,
+		Output:     config.Output,
+		FilePath:   config.FilePath,
+		MaxSize:    config.MaxSize,
+		MaxBackups: config.MaxBackups,
+		MaxAge:     config.MaxAge,
+		Compress:   config.Compress,
+		JSONFormat: true,
 	}
 
-	if config.Output == "file" {
-		loggerConfig.FilePath = config.FilePath
+	// 提供文件输出时的安全默认值
+	if loggerConfig.Output == "file" {
+		if loggerConfig.MaxSize == 0 {
+			loggerConfig.MaxSize = 100 // MB
+		}
+		if loggerConfig.MaxBackups == 0 {
+			loggerConfig.MaxBackups = 3
+		}
+		if loggerConfig.MaxAge == 0 {
+			loggerConfig.MaxAge = 7 // days
+		}
 	}
 
 	return logger.New(loggerConfig), nil

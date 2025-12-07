@@ -82,6 +82,13 @@ func (h *TracingHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, i
 	ctx = context.WithValue(ctx, currentSpanKey, span)
 	ctx = context.WithValue(ctx, spanIDKey, spanID)
 
+	// 注入 Trace/Span 字段，后续日志自动携带
+	ctx = logger.InjectFields(ctx, logger.Fields{
+		"trace_id":  traceID,
+		"span_id":   spanID,
+		"parent_id": parentID,
+	})
+
 	h.logger.DebugContext(ctx, "开始跨度",
 		"trace_id", traceID,
 		"span_id", spanID,

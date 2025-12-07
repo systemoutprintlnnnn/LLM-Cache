@@ -40,6 +40,13 @@ func (h *LoggingHandler) OnStart(ctx context.Context, info *callbacks.RunInfo, i
 	startTime := time.Now()
 	ctx = context.WithValue(ctx, startTimeKey, startTime)
 
+	// 注入组件字段，后续日志自动携带
+	ctx = logger.InjectFields(ctx, logger.Fields{
+		"component": info.Component,
+		"name":      info.Name,
+		"type":      info.Type,
+	})
+
 	h.logger.InfoContext(ctx, "组件开始执行",
 		"component", info.Component,
 		"name", info.Name,
