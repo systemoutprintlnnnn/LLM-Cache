@@ -5,10 +5,18 @@ import (
 	"context"
 	"fmt"
 
+	es8indexer "github.com/cloudwego/eino-ext/components/indexer/es8"
+	milvusindexer "github.com/cloudwego/eino-ext/components/indexer/milvus"
 	qdrantindexer "github.com/cloudwego/eino-ext/components/indexer/qdrant"
+	redisindexer "github.com/cloudwego/eino-ext/components/indexer/redis"
+	vikingdbindexer "github.com/cloudwego/eino-ext/components/indexer/volc_vikingdb"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/indexer"
+	"github.com/cloudwego/eino/schema"
+	"github.com/elastic/go-elasticsearch/v8"
+	milvusClient "github.com/milvus-io/milvus-sdk-go/v2/client"
 	qdrantClient "github.com/qdrant/go-client/qdrant"
+	"github.com/redis/go-redis/v9"
 
 	"llm-cache/internal/eino/config"
 )
@@ -89,98 +97,122 @@ func parseQdrantDistance(dist string) qdrantClient.Distance {
 }
 
 // newMilvusIndexer 创建 Milvus Indexer
-// 注意：需要添加 github.com/cloudwego/eino-ext/components/indexer/milvus 依赖
 func newMilvusIndexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
-	/*
-		import (
-			milvusindexer "github.com/cloudwego/eino-ext/components/indexer/milvus"
-			milvusClient "github.com/milvus-io/milvus-sdk-go/v2/client"
-		)
+	// 创建 Milvus 客户端
+	client, err := milvusClient.NewClient(ctx, milvusClient.Config{
+		Address:  fmt.Sprintf("%s:%d", cfg.Milvus.Host, cfg.Milvus.Port),
+		Username: cfg.Milvus.Username,
+		Password: cfg.Milvus.Password,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create milvus client: %w", err)
+	}
 
-		client, err := milvusClient.NewClient(ctx, milvusClient.Config{
-			Address:  fmt.Sprintf("%s:%d", cfg.Milvus.Host, cfg.Milvus.Port),
-			Username: cfg.Milvus.Username,
-			Password: cfg.Milvus.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create milvus client: %w", err)
-		}
+	// 创建 Indexer 配置
+	indexerCfg := &milvusindexer.IndexerConfig{
+		Client:     client,
+		Collection: cfg.Collection,
+		Embedding:  embedder,
+	}
 
-		return milvusindexer.NewIndexer(ctx, &milvusindexer.IndexerConfig{
-			Client:      client,
-			Collection:  cfg.Collection,
-			Embedding:   embedder,
-			VectorField: cfg.Milvus.VectorField,
-		})
-	*/
-	return nil, fmt.Errorf("Milvus indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/milvus dependency")
+	return milvusindexer.NewIndexer(ctx, indexerCfg)
 }
 
 // newRedisIndexer 创建 Redis Indexer
-// 注意：需要添加 github.com/cloudwego/eino-ext/components/indexer/redis 依赖
 func newRedisIndexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
-	/*
-		import (
-			redisindexer "github.com/cloudwego/eino-ext/components/indexer/redis"
-			"github.com/redis/go-redis/v9"
-		)
+	// 创建 Redis 客户端
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
 
-		rdb := redis.NewClient(&redis.Options{
-			Addr:     cfg.Redis.Addr,
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.DB,
-		})
+	// 创建 Indexer 配置
+	indexerCfg := &redisindexer.IndexerConfig{
+		Client:    rdb,
+		KeyPrefix: cfg.Redis.Prefix,
+		Embedding: embedder,
+	}
 
-		return redisindexer.NewIndexer(ctx, &redisindexer.IndexerConfig{
-			Client:      rdb,
-			Index:       cfg.Redis.Index,
-			Prefix:      cfg.Redis.Prefix,
-			VectorField: cfg.Redis.VectorField,
-			Embedding:   embedder,
-		})
-	*/
-	return nil, fmt.Errorf("Redis indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/redis dependency")
+	return redisindexer.NewIndexer(ctx, indexerCfg)
 }
 
-// newES8Indexer 创建 Elasticsearch Indexer
-// 注意：需要添加 github.com/cloudwego/eino-ext/components/indexer/es8 依赖
+// newES8Indexer 创建 Elasticsearch 8 Indexer
 func newES8Indexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
-	/*
-		import (
-			es8indexer "github.com/cloudwego/eino-ext/components/indexer/es8"
-			"github.com/elastic/go-elasticsearch/v8"
-		)
+	// 创建 Elasticsearch 客户端
+	esClient, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: cfg.ES8.Addresses,
+		Username:  cfg.ES8.Username,
+		Password:  cfg.ES8.Password,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create elasticsearch client: %w", err)
+	}
 
-		esClient, err := elasticsearch.NewClient(elasticsearch.Config{
-			Addresses: cfg.ES8.Addresses,
-			Username:  cfg.ES8.Username,
-			Password:  cfg.ES8.Password,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create elasticsearch client: %w", err)
+	// 创建 Indexer 配置
+	indexerCfg := &es8indexer.IndexerConfig{
+		Client:           esClient,
+		Index:            cfg.ES8.Index,
+		Embedding:        embedder,
+		DocumentToFields: defaultES8DocumentToFields(cfg.ES8.VectorField),
+	}
+
+	return es8indexer.NewIndexer(ctx, indexerCfg)
+}
+
+// defaultES8DocumentToFields 返回 ES8 文档字段映射函数
+func defaultES8DocumentToFields(vectorField string) func(ctx context.Context, doc *schema.Document) (map[string]es8indexer.FieldValue, error) {
+	if vectorField == "" {
+		vectorField = "vector"
+	}
+	return func(ctx context.Context, doc *schema.Document) (map[string]es8indexer.FieldValue, error) {
+		fields := map[string]es8indexer.FieldValue{
+			"id": {Value: doc.ID},
+			"content": {
+				Value:    doc.Content,
+				EmbedKey: vectorField,
+			},
 		}
 
-		return es8indexer.NewIndexer(ctx, &es8indexer.IndexerConfig{
-			Client:      esClient,
-			Index:       cfg.ES8.Index,
-			VectorField: cfg.ES8.VectorField,
-			Embedding:   embedder,
-		})
-	*/
-	return nil, fmt.Errorf("Elasticsearch indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/es8 dependency")
+		// 添加元数据字段
+		for k, v := range doc.MetaData {
+			fields[k] = es8indexer.FieldValue{Value: v}
+		}
+
+		return fields, nil
+	}
 }
 
 // newVikingDBIndexer 创建 VikingDB Indexer
-// 注意：需要添加 github.com/cloudwego/eino-ext/components/indexer/vikingdb 依赖
 func newVikingDBIndexer(ctx context.Context, cfg *config.IndexerConfig, embedder embedding.Embedder) (indexer.Indexer, error) {
-	/*
-		import vikingdbindexer "github.com/cloudwego/eino-ext/components/indexer/vikingdb"
+	// 创建 Indexer 配置
+	indexerCfg := &vikingdbindexer.IndexerConfig{
+		Host:              cfg.VikingDB.Host,
+		Region:            cfg.VikingDB.Region,
+		AK:                cfg.VikingDB.AK,
+		SK:                cfg.VikingDB.SK,
+		Scheme:            cfg.VikingDB.Scheme,
+		ConnectionTimeout: cfg.VikingDB.ConnectionTimeout,
+		Collection:        cfg.Collection,
+		WithMultiModal:    cfg.VikingDB.WithMultiModal,
+		AddBatchSize:      cfg.VikingDB.AddBatchSize,
+	}
 
-		return vikingdbindexer.NewIndexer(ctx, &vikingdbindexer.IndexerConfig{
-			Collection: collection,
-			Index:      index,
-			Embedding:  embedder,
-		})
-	*/
-	return nil, fmt.Errorf("VikingDB indexer is not enabled. Please add github.com/cloudwego/eino-ext/components/indexer/vikingdb dependency")
+	// 配置 Embedding
+	if !cfg.VikingDB.WithMultiModal {
+		if cfg.VikingDB.UseBuiltinEmbedding {
+			indexerCfg.EmbeddingConfig = vikingdbindexer.EmbeddingConfig{
+				UseBuiltin: true,
+				ModelName:  cfg.VikingDB.EmbeddingModelName,
+				UseSparse:  cfg.VikingDB.UseSparse,
+			}
+		} else {
+			indexerCfg.EmbeddingConfig = vikingdbindexer.EmbeddingConfig{
+				UseBuiltin: false,
+				Embedding:  embedder,
+			}
+		}
+	}
+
+	return vikingdbindexer.NewIndexer(ctx, indexerCfg)
 }

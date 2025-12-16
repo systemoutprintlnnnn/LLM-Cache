@@ -58,6 +58,9 @@ type RetrieverConfig struct {
 
 	// Elasticsearch 专用配置
 	ES8 ES8RetrieverConfig `yaml:"es8"`
+
+	// VikingDB 专用配置
+	VikingDB VikingDBRetrieverConfig `yaml:"vikingdb"`
 }
 
 // QdrantRetrieverConfig 定义 Qdrant 检索器的专用配置。
@@ -86,6 +89,7 @@ type RedisRetrieverConfig struct {
 	Password     string   `yaml:"password"`
 	DB           int      `yaml:"db"`
 	Index        string   `yaml:"index"`
+	Prefix       string   `yaml:"prefix"` // 键前缀，用于删除操作
 	VectorField  string   `yaml:"vector_field"`
 	ReturnFields []string `yaml:"return_fields"`
 }
@@ -98,6 +102,26 @@ type ES8RetrieverConfig struct {
 	Index       string   `yaml:"index"`
 	VectorField string   `yaml:"vector_field"`
 	SearchMode  string   `yaml:"search_mode"` // knn, hybrid
+}
+
+// VikingDBRetrieverConfig 定义 VikingDB 检索器的专用配置。
+// VikingDB 是字节跳动的向量数据库服务。
+type VikingDBRetrieverConfig struct {
+	Host              string `yaml:"host"`
+	Region            string `yaml:"region"`
+	AK                string `yaml:"ak"`      // Access Key
+	SK                string `yaml:"sk"`      // Secret Key
+	Scheme            string `yaml:"scheme"`  // http or https
+	ConnectionTimeout int64  `yaml:"connection_timeout"` // 连接超时（秒）
+	Index             string `yaml:"index"`
+	Partition         string `yaml:"partition"`
+	// WithMultiModal 如果数据集在平台向量化，配置为 true
+	WithMultiModal bool `yaml:"with_multi_modal"`
+	// UseBuiltinEmbedding 是否使用 VikingDB 内置向量化
+	UseBuiltinEmbedding bool   `yaml:"use_builtin_embedding"`
+	EmbeddingModelName  string `yaml:"embedding_model_name"`
+	UseSparse           bool   `yaml:"use_sparse"`
+	DenseWeight         float64 `yaml:"dense_weight"`
 }
 
 // IndexerConfig 定义索引器（Indexer）的配置。
@@ -118,6 +142,9 @@ type IndexerConfig struct {
 
 	// Elasticsearch 专用配置
 	ES8 ES8IndexerConfig `yaml:"es8"`
+
+	// VikingDB 专用配置
+	VikingDB VikingDBIndexerConfig `yaml:"vikingdb"`
 }
 
 // QdrantIndexerConfig 定义 Qdrant 索引器的专用配置。
@@ -155,6 +182,23 @@ type ES8IndexerConfig struct {
 	Password    string   `yaml:"password"`
 	Index       string   `yaml:"index"`
 	VectorField string   `yaml:"vector_field"`
+}
+
+// VikingDBIndexerConfig 定义 VikingDB 索引器的专用配置。
+type VikingDBIndexerConfig struct {
+	Host              string `yaml:"host"`
+	Region            string `yaml:"region"`
+	AK                string `yaml:"ak"`      // Access Key
+	SK                string `yaml:"sk"`      // Secret Key
+	Scheme            string `yaml:"scheme"`  // http or https
+	ConnectionTimeout int64  `yaml:"connection_timeout"` // 连接超时（秒）
+	// WithMultiModal 如果数据集在平台向量化，配置为 true
+	WithMultiModal bool `yaml:"with_multi_modal"`
+	// UseBuiltinEmbedding 是否使用 VikingDB 内置向量化
+	UseBuiltinEmbedding bool   `yaml:"use_builtin_embedding"`
+	EmbeddingModelName  string `yaml:"embedding_model_name"`
+	UseSparse           bool   `yaml:"use_sparse"`
+	AddBatchSize        int    `yaml:"add_batch_size"`
 }
 
 // QueryConfig 定义查询流程（Query Graph）的配置。
