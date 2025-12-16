@@ -113,7 +113,7 @@ func initializeEinoComponents(
 ) (
 	compose.Runnable[*flows.CacheQueryInput, *flows.CacheQueryOutput],
 	compose.Runnable[*flows.CacheStoreInput, *flows.CacheStoreOutput],
-	*flows.CacheDeleteService,
+	flows.CacheDeleter,
 	error,
 ) {
 	// 1. 创建 Embedder
@@ -165,12 +165,12 @@ func initializeEinoComponents(
 	}
 	log.InfoContext(ctx, "Store Graph 编译成功")
 
-	// 6. 创建 Delete Service
-	deleteService, err := flows.NewCacheDeleteService(&einoCfg.Retriever)
+	// 6. 创建 Delete Service（使用工厂函数，支持多种向量数据库）
+	deleteService, err := flows.NewCacheDeleter(&einoCfg.Retriever)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("delete service 初始化失败: %w", err)
 	}
-	log.InfoContext(ctx, "Delete Service 创建成功")
+	log.InfoContext(ctx, "Delete Service 创建成功", "provider", einoCfg.Retriever.Provider)
 
 	return queryRunner, storeRunner, deleteService, nil
 }

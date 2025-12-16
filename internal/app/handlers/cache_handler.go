@@ -19,7 +19,7 @@ import (
 type CacheHandler struct {
 	queryRunner   compose.Runnable[*flows.CacheQueryInput, *flows.CacheQueryOutput]
 	storeRunner   compose.Runnable[*flows.CacheStoreInput, *flows.CacheStoreOutput]
-	deleteService *flows.CacheDeleteService
+	deleteService flows.CacheDeleter
 	logger        logger.Logger
 }
 
@@ -28,7 +28,7 @@ type CacheHandler struct {
 func NewCacheHandler(
 	queryRunner compose.Runnable[*flows.CacheQueryInput, *flows.CacheQueryOutput],
 	storeRunner compose.Runnable[*flows.CacheStoreInput, *flows.CacheStoreOutput],
-	deleteService *flows.CacheDeleteService,
+	deleteService flows.CacheDeleter,
 	log logger.Logger,
 ) *CacheHandler {
 	return &CacheHandler{
